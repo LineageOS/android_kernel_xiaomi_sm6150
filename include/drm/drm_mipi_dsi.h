@@ -285,9 +285,9 @@ int mipi_dsi_dcs_set_tear_scanline(struct mipi_dsi_device *dsi, u16 scanline);
 int mipi_dsi_dcs_set_display_brightness_ss(struct mipi_dsi_device *dsi,
 						u16 brightness);
 int mipi_dsi_dcs_set_display_brightness(struct mipi_dsi_device *dsi,
-					u16 brightness);
+					u16 brightness, size_t num_params);
 int mipi_dsi_dcs_get_display_brightness(struct mipi_dsi_device *dsi,
-					u16 *brightness);
+					u16 *brightness, size_t num_params);
 
 /**
  * struct mipi_dsi_driver - DSI driver
