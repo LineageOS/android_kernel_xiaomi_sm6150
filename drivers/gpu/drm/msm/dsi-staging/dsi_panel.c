@@ -660,7 +660,7 @@ static int dsi_panel_wled_register(struct dsi_panel *panel,
 		return -EPROBE_DEFER;
 	}
 
-	bl->raw_bd = bd;
+	bl->bl_device = bd;
 	return 0;
 }
 
@@ -885,7 +885,7 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 
 	switch (bl->type) {
 	case DSI_BACKLIGHT_WLED:
-		rc = backlight_device_set_brightness(bl->raw_bd, bl_lvl);
+		rc = backlight_device_set_brightness(bl->bl_device, bl_lvl);
 		break;
 	case DSI_BACKLIGHT_DCS:
 		if (panel->fod_backlight_flag) {
@@ -964,6 +964,7 @@ static int dsi_panel_bl_register(struct dsi_panel *panel)
 		goto error;
 	}
 
+	rc = dsi_backlight_register(bl);
 error:
 	return rc;
 }
