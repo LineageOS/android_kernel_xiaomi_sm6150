@@ -4360,6 +4360,11 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 
 exit:
 	mutex_unlock(&panel->panel_lock);
+
+	if (!rc)
+		rc = dsi_backlight_update_dpms(&panel->bl_config,
+					       SDE_MODE_DPMS_LP1);
+
 	return rc;
 }
 
@@ -4379,6 +4384,11 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 		pr_err("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
 		       panel->name, rc);
 	mutex_unlock(&panel->panel_lock);
+
+	if (!rc)
+		rc = dsi_backlight_update_dpms(&panel->bl_config,
+					       SDE_MODE_DPMS_LP2);
+
 	return rc;
 }
 
@@ -4417,6 +4427,10 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 		rc = dsi_panel_set_backlight(panel, panel->last_bl_lvl);
 
 	mutex_unlock(&panel->panel_lock);
+
+	if (!rc)
+		rc = dsi_backlight_update_dpms(&panel->bl_config,
+					       SDE_MODE_DPMS_ON);
 	return rc;
 }
 
