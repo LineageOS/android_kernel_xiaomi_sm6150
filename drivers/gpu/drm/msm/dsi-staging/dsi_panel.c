@@ -649,21 +649,6 @@ error:
 	return rc;
 }
 
-static int dsi_panel_wled_register(struct dsi_panel *panel,
-		struct dsi_backlight_config *bl)
-{
-	struct backlight_device *bd;
-
-	bd = backlight_device_get_by_type(BACKLIGHT_RAW);
-	if (!bd) {
-		pr_debug("[%s] backlight device list empty\n", panel->name);
-		return -EPROBE_DEFER;
-	}
-
-	bl->bl_device = bd;
-	return 0;
-}
-
 enum {
 	DEMURA_STATUS_NONE = 0,
 	DEMURA_STATUS_DC_L1,
@@ -739,15 +724,6 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 
 	pr_debug("bl_temp %d\n", bl_temp);
 	dsi = &panel->mipi_device;
-
-	if (panel->bl_config.dcs_type_ss_ea || panel->bl_config.dcs_type_ss_eb)
-		rc = mipi_dsi_dcs_set_display_brightness_ss(dsi, bl_temp);
-	else
-		rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_temp);
-
-	/* For the f4_41 panel, we need to switch the DEMURA_LEVEL according to the value of the 51 register. */
-	if (panel->bl_config.xiaomi_f4_41_flag)
-		rc = dsi_panel_update_backlight_demura_level(panel, bl_temp);
 
 	if (rc < 0)
 		pr_err("failed to update dcs backlight:%d\n", bl_temp);
@@ -869,60 +845,6 @@ int dsi_panel_enable_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 	return rc;
 }
 
-int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
-{
-	int rc = 0;
-
-	struct dsi_backlight_config *bl = &panel->bl_config;
-
-	if (panel->host_config.ext_bridge_num)
-		return 0;
-
-	pr_debug("backlight type:%d lvl:%d\n", bl->type, bl_lvl);
-
-	if (0 == bl_lvl)
-		dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_DIMMINGOFF);
-
-	switch (bl->type) {
-	case DSI_BACKLIGHT_WLED:
-		rc = backlight_device_set_brightness(bl->bl_device, bl_lvl);
-		break;
-	case DSI_BACKLIGHT_DCS:
-		if (panel->fod_backlight_flag) {
-			pr_info("fod_backlight_flag set\n");
-		} else {
-			if (panel->f4_51_ctrl_flag &&
-				(panel->fod_hbm_enabled || panel->hbm_enabled || panel->fod_dimlayer_hbm_enabled)) {
-				pr_info("if use 51 register control hbm and hbm on(%d,%d), skip set backlight: %d\n",
-					panel->fod_hbm_enabled, panel->hbm_enabled, bl_lvl);
-			} else {
-				rc = dsi_panel_update_backlight(panel, bl_lvl);
-			}
-		}
-		break;
-	case DSI_BACKLIGHT_EXTERNAL:
-		break;
-	case DSI_BACKLIGHT_PWM:
-		rc = dsi_panel_update_pwm_backlight(panel, bl_lvl);
-		break;
-	default:
-		pr_err("Backlight type(%d) not supported\n", bl->type);
-		rc = -ENOTSUPP;
-	}
-
-	if ((panel->last_bl_lvl == 0 || (panel->skip_dimmingon == STATE_DIM_RESTORE)) && bl_lvl) {
-		if (panel->panel_on_dimming_delay)
-			schedule_delayed_work(&panel->cmds_work,
-				msecs_to_jiffies(panel->panel_on_dimming_delay));
-
-		if (panel->skip_dimmingon == STATE_DIM_RESTORE)
-			panel->skip_dimmingon = STATE_NONE;
-	}
-
-	panel->last_bl_lvl = bl_lvl;
-	return rc;
-}
-
 static int dsi_panel_pwm_register(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -938,70 +860,11 @@ static int dsi_panel_pwm_register(struct dsi_panel *panel)
 
 	return 0;
 }
-
-static int dsi_panel_bl_register(struct dsi_panel *panel)
-{
-	int rc = 0;
-	struct dsi_backlight_config *bl = &panel->bl_config;
-
-	if (panel->host_config.ext_bridge_num)
-		return 0;
-
-	switch (bl->type) {
-	case DSI_BACKLIGHT_WLED:
-		rc = dsi_panel_wled_register(panel, bl);
-		break;
-	case DSI_BACKLIGHT_DCS:
-		break;
-	case DSI_BACKLIGHT_EXTERNAL:
-		break;
-	case DSI_BACKLIGHT_PWM:
-		rc = dsi_panel_pwm_register(panel);
-		break;
-	default:
-		pr_err("Backlight type(%d) not supported\n", bl->type);
-		rc = -ENOTSUPP;
-		goto error;
-	}
-
-	rc = dsi_backlight_register(bl);
-error:
-	return rc;
-}
-
 static void dsi_panel_pwm_unregister(struct dsi_panel *panel)
 {
 	struct dsi_backlight_config *bl = &panel->bl_config;
 
 	devm_pwm_put(panel->parent, bl->pwm_bl);
-}
-
-static int dsi_panel_bl_unregister(struct dsi_panel *panel)
-{
-	int rc = 0;
-	struct dsi_backlight_config *bl = &panel->bl_config;
-
-	if (panel->host_config.ext_bridge_num)
-		return 0;
-
-	switch (bl->type) {
-	case DSI_BACKLIGHT_WLED:
-		break;
-	case DSI_BACKLIGHT_DCS:
-		break;
-	case DSI_BACKLIGHT_EXTERNAL:
-		break;
-	case DSI_BACKLIGHT_PWM:
-		dsi_panel_pwm_unregister(panel);
-		break;
-	default:
-		pr_err("Backlight type(%d) not supported\n", bl->type);
-		rc = -ENOTSUPP;
-		goto error;
-	}
-
-error:
-	return rc;
 }
 
 static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
@@ -2487,155 +2350,6 @@ error:
 	return rc;
 }
 
-static int dsi_panel_parse_bl_pwm_config(struct dsi_panel *panel)
-{
-	int rc = 0;
-	u32 val;
-	struct dsi_backlight_config *config = &panel->bl_config;
-	struct dsi_parser_utils *utils = &panel->utils;
-
-	rc = utils->read_u32(utils->data, "qcom,bl-pmic-pwm-period-usecs",
-				  &val);
-	if (rc) {
-		pr_err("bl-pmic-pwm-period-usecs is not defined, rc=%d\n", rc);
-		goto error;
-	}
-	config->pwm_period_usecs = val;
-
-error:
-	return rc;
-}
-
-static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
-{
-	int rc = 0;
-	u32 val = 0;
-	const char *bl_type;
-	const char *data;
-	struct dsi_parser_utils *utils = &panel->utils;
-	char *bl_name;
-
-	if (!strcmp(panel->type, "primary"))
-		bl_name = "qcom,mdss-dsi-bl-pmic-control-type";
-	else
-		bl_name = "qcom,mdss-dsi-sec-bl-pmic-control-type";
-
-	bl_type = utils->get_property(utils->data, bl_name, NULL);
-	if (!bl_type) {
-		panel->bl_config.type = DSI_BACKLIGHT_UNKNOWN;
-	} else if (!strcmp(bl_type, "bl_ctrl_pwm")) {
-		panel->bl_config.type = DSI_BACKLIGHT_PWM;
-	} else if (!strcmp(bl_type, "bl_ctrl_wled")) {
-		panel->bl_config.type = DSI_BACKLIGHT_WLED;
-	} else if (!strcmp(bl_type, "bl_ctrl_dcs")) {
-		panel->bl_config.type = DSI_BACKLIGHT_DCS;
-	} else if (!strcmp(bl_type, "bl_ctrl_external")) {
-		panel->bl_config.type = DSI_BACKLIGHT_EXTERNAL;
-	} else {
-		pr_debug("[%s] bl-pmic-control-type unknown-%s\n",
-			 panel->name, bl_type);
-		panel->bl_config.type = DSI_BACKLIGHT_UNKNOWN;
-	}
-
-	panel->bl_config.dcs_type_ss_ea = utils->read_bool(utils->data,
-								"qcom,mdss-dsi-bl-dcs-type-ss-ea");
-
-	panel->bl_config.dcs_type_ss_eb = utils->read_bool(utils->data,
-								"qcom,mdss-dsi-bl-dcs-type-ss-eb");
-
-	panel->bl_config.xiaomi_f4_36_flag = utils->read_bool(utils->data,
-								"qcom,mdss-dsi-bl-xiaomi-f4-36-flag");
-
-	panel->bl_config.xiaomi_f4_41_flag = utils->read_bool(utils->data,
-								"qcom,mdss-dsi-bl-xiaomi-f4-41-flag");
-
-	data = utils->get_property(utils->data, "qcom,bl-update-flag", NULL);
-	if (!data) {
-		panel->bl_config.bl_update = BL_UPDATE_NONE;
-	} else if (!strcmp(data, "delay_until_first_frame")) {
-		panel->bl_config.bl_update = BL_UPDATE_DELAY_UNTIL_FIRST_FRAME;
-	} else {
-		pr_debug("[%s] No valid bl-update-flag: %s\n",
-						panel->name, data);
-		panel->bl_config.bl_update = BL_UPDATE_NONE;
-	}
-
-	panel->bl_config.bl_scale = MAX_BL_SCALE_LEVEL;
-	panel->bl_config.bl_scale_ad = MAX_AD_BL_SCALE_LEVEL;
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-bl-min-level", &val);
-	if (rc) {
-		pr_debug("[%s] bl-min-level unspecified, defaulting to zero\n",
-			 panel->name);
-		panel->bl_config.bl_min_level = 0;
-	} else {
-		panel->bl_config.bl_min_level = val;
-	}
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-bl-max-level", &val);
-	if (rc) {
-		pr_debug("[%s] bl-max-level unspecified, defaulting to max level\n",
-			 panel->name);
-		panel->bl_config.bl_max_level = MAX_BL_LEVEL;
-	} else {
-		panel->bl_config.bl_max_level = val;
-	}
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-brightness-max-level",
-		&val);
-	if (rc) {
-		pr_debug("[%s] brigheness-max-level unspecified, defaulting to 255\n",
-			 panel->name);
-		panel->bl_config.brightness_max_level = 255;
-	} else {
-		panel->bl_config.brightness_max_level = val;
-	}
-
-	rc = utils->read_u32(utils->data,
-			"qcom,mdss-dsi-bl-default-level", &val);
-	if (rc) {
-		panel->bl_config.brightness_default_level =
-			panel->bl_config.brightness_max_level;
-		pr_debug("set default brightness to max level\n");
-	} else {
-		panel->bl_config.brightness_default_level = val;
-	}
-	panel->bl_config.bl_remap_flag = utils->read_bool(utils->data,
-								"qcom,mdss-brightness-remap");
-
-	panel->bl_config.samsung_prepare_hbm_flag = utils->read_bool(utils->data,
-									"qcom,samsung-prepare-hbm");
-
-	if (panel->bl_config.type == DSI_BACKLIGHT_PWM) {
-		rc = dsi_panel_parse_bl_pwm_config(panel);
-		if (rc) {
-			pr_err("[%s] failed to parse pwm config, rc=%d\n",
-			       panel->name, rc);
-			goto error;
-		}
-	}
-
-	panel->bl_config.en_gpio = utils->get_named_gpio(utils->data,
-					      "qcom,platform-bklight-en-gpio",
-					      0);
-	if (!gpio_is_valid(panel->bl_config.en_gpio)) {
-		if (panel->bl_config.en_gpio == -EPROBE_DEFER) {
-			pr_debug("[%s] failed to get bklt gpio, rc=%d\n",
-						panel->name, rc);
-			rc = -EPROBE_DEFER;
-			goto error;
-		} else {
-			pr_debug("[%s] failed to get bklt gpio, rc=%d\n",
-						panel->name, rc);
-			rc = 0;
-			goto error;
-		}
-	}
-
-error:
-	return rc;
-}
-
 void dsi_dsc_pclk_param_calc(struct msm_display_dsc_info *dsc, int intf_width)
 {
 	int slice_per_pkt, slice_per_intf;
@@ -3849,7 +3563,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		pr_err("failed to parse power config, rc=%d\n", rc);
 
-	rc = dsi_panel_parse_bl_config(panel);
+	rc = dsi_panel_bl_parse_config(&panel->bl_config);
 	if (rc) {
 		pr_err("failed to parse backlight config, rc=%d\n", rc);
 		if (rc == -EPROBE_DEFER)
