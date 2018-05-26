@@ -121,6 +121,7 @@ struct dsi_backlight_config {
 	u32 bl_scale;
 	u32 bl_scale_ad;
 	u32 bl_actual;
+	u16 *bl_lut;
 	unsigned int last_state;
 	bool dcs_type_ss_ea;
 	bool dcs_type_ss_eb;
@@ -408,5 +409,7 @@ int dsi_backlight_late_dpms(struct dsi_backlight_config *bl, int power_state);
 
 int dsi_panel_bl_register(struct dsi_panel *panel);
 int dsi_panel_bl_unregister(struct dsi_panel *panel);
-int dsi_panel_bl_parse_config(struct dsi_backlight_config *bl);
+int dsi_panel_bl_parse_config(struct device *parent,
+			      struct dsi_backlight_config *bl);
+
 #endif /* _DSI_PANEL_H_ */
