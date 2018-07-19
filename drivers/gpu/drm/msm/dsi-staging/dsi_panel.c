@@ -1926,6 +1926,9 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command",
 	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command",
 	"qcom,mdss-dsi-read-lockdown-info-command",
+	"qcom,mdss-dsi-dispparam-crc-dcip3-on-command",
+	"qcom,mdss-dsi-dispparam-crc-off-command",
+	"qcom,mdss-dsi-dispparam-crc-srgb-on-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1960,6 +1963,9 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command-state",
 	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command-state",
 	"qcom,mdss-dsi-read-lockdown-info-command-state",
+	"qcom,mdss-dsi-dispparam-crc-dcip3-on-command-state",
+	"qcom,mdss-dsi-dispparam-crc-off-command-state",
+	"qcom,mdss-dsi-dispparam-crc-srgb-on-command-state",
 };
 
 static int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -4627,8 +4633,19 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		panel->panel_initialized = true;
 	mutex_unlock(&panel->panel_lock);
 
-  if (panel->hbm_mode)
+	dsi_panel_init_display_modes(panel);
+
+	return rc;
+}
+
+int dsi_panel_init_display_modes(struct dsi_panel *panel)
+{
+	int rc;
+	if (panel->hbm_mode)
 		dsi_panel_apply_hbm_mode(panel);
+
+	if (panel->display_mode != DISPLAY_MODE_DEFAULT)
+		dsi_panel_apply_display_mode(panel);
 
 	return rc;
 }
@@ -4797,6 +4814,24 @@ int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
 		type = type_map[panel->hbm_mode];
   else
 		type = 0;
+
+	mutex_lock(&panel->panel_lock);
+	rc = dsi_panel_tx_cmd_set(panel, type);
+	mutex_unlock(&panel->panel_lock);
+
+	return rc;
+}
+
+int dsi_panel_apply_display_mode(struct dsi_panel *panel)
+{
+	enum dsi_cmd_set_type type;
+	int rc;
+
+	switch (panel->display_mode) {
+		case DISPLAY_MODE_SRGB: type = DSI_CMD_SET_DISP_CRC_SRGB; break;
+		case DISPLAY_MODE_DCI_P3: type = DSI_CMD_SET_DISP_CRC_DCIP3; break;
+		default: type = DSI_CMD_SET_DISP_CRC_OFF; break;
+	}
 
 	mutex_lock(&panel->panel_lock);
 	rc = dsi_panel_tx_cmd_set(panel, type);

@@ -82,6 +82,12 @@ enum dsi_panel_physical_type {
 	DSI_DISPLAY_PANEL_TYPE_MAX,
 };
 
+enum dsi_panel_display_mode {
+	DISPLAY_MODE_DEFAULT,
+	DISPLAY_MODE_SRGB,
+	DISPLAY_MODE_DCI_P3,
+};
+
 struct dsi_dfps_capabilities {
 	enum dsi_dfps_type type;
 	u32 min_refresh_rate;
@@ -229,6 +235,7 @@ struct dsi_panel {
 	struct dsi_parser_utils utils;
 
 	int hbm_mode;
+	enum dsi_panel_display_mode display_mode;
 	bool is_tddi_flag;
 	bool panel_dead_flag;
 
@@ -401,6 +408,10 @@ int dsi_panel_set_fod_hbm(struct dsi_panel *panel, bool status);
 u32 dsi_panel_get_fod_dim_alpha(struct dsi_panel *panel);
 
 int dsi_panel_apply_hbm_mode(struct dsi_panel *panel);
+
+int dsi_panel_apply_display_mode(struct dsi_panel *panel);
+
+int dsi_panel_init_display_modes(struct dsi_panel *panel);
 
 int dsi_panel_idle(struct dsi_panel *panel);
 int dsi_panel_wakeup(struct dsi_panel *panel);

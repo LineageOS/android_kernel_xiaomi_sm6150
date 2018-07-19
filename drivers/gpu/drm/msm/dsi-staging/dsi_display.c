@@ -5211,6 +5211,70 @@ error:
 	return ret == 0 ? count : ret;
 }
 
+static ssize_t sysfs_display_mode_read(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+	if (!display->panel)
+		return 0;
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n",
+		display->panel->display_mode == DISPLAY_MODE_SRGB ? "srgb" :
+		display->panel->display_mode == DISPLAY_MODE_DCI_P3 ? "dci-p3" :
+		"default");
+}
+
+static ssize_t sysfs_display_mode_write(struct device *dev,
+	    struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+	enum dsi_panel_display_mode mode;
+	int ret = 0;
+
+	if (!display->panel)
+		return -EINVAL;
+
+	if (!strcmp(buf, "srgb"))
+		mode = DISPLAY_MODE_SRGB;
+	else if (!strcmp(buf, "dci-p3"))
+		mode = DISPLAY_MODE_DCI_P3;
+	else if (!strcmp(buf, "default"))
+		mode = DISPLAY_MODE_DEFAULT;
+	else
+		return -EINVAL;
+
+	mutex_lock(&display->display_lock);
+
+	display->panel->display_mode = mode;
+	if (!dsi_panel_initialized(display->panel)) {
+                printk("not initialized\n");
+		goto error;
+	}
+
+	ret = dsi_display_clk_ctrl(display->dsi_clk_handle,
+			DSI_CORE_CLK, DSI_CLK_ON);
+	if (ret) {
+		pr_err("[%s] failed to enable DSI core clocks, rc=%d\n",
+		       display->name, ret);
+		goto error;
+	}
+
+	ret = dsi_panel_apply_display_mode(display->panel);
+	if (ret)
+		pr_err("unable to set display mode\n");
+
+	ret = dsi_display_clk_ctrl(display->dsi_clk_handle,
+			DSI_CORE_CLK, DSI_CLK_OFF);
+	if (ret) {
+		pr_err("[%s] failed to disable DSI core clocks, rc=%d\n",
+		       display->name, ret);
+		goto error;
+	}
+error:
+	mutex_unlock(&display->display_lock);
+	return ret == 0 ? count : ret;
+}
+
 static DEVICE_ATTR(doze_status, 0644,
 			sysfs_doze_status_read,
 			sysfs_doze_status_write);
@@ -5225,11 +5289,16 @@ static DEVICE_ATTR(fod_ui, 0444,
 
 static DEVICE_ATTR(hbm, 0644, sysfs_hbm_read, sysfs_hbm_write);
 
+static DEVICE_ATTR(display_mode, 0644,
+			sysfs_display_mode_read,
+			sysfs_display_mode_write);
+
 static struct attribute *display_fs_attrs[] = {
 	&dev_attr_doze_status.attr,
 	&dev_attr_doze_mode.attr,
 	&dev_attr_fod_ui.attr,
 	&dev_attr_hbm.attr,
+	&dev_attr_display_mode.attr,
 	NULL,
 };
 static struct attribute_group display_fs_attrs_group = {
@@ -7800,6 +7869,7 @@ int dsi_display_enable(struct dsi_display *display)
 		}
 
 		display->panel->panel_initialized = true;
+		dsi_panel_init_display_modes(display->panel);
 		pr_debug("cont splash enabled, display enable not required\n");
 		return 0;
 	}
