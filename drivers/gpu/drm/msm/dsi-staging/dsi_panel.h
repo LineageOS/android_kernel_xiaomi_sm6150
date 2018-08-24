@@ -121,6 +121,7 @@ struct dsi_backlight_config {
 	u32 bl_scale;
 	u32 bl_scale_ad;
 	u32 bl_actual;
+	unsigned int last_state;
 	bool dcs_type_ss_ea;
 	bool dcs_type_ss_eb;
 	bool xiaomi_f4_36_flag;
@@ -131,6 +132,7 @@ struct dsi_backlight_config {
 	bool samsung_prepare_hbm_flag;
 
 	struct backlight_device *bl_device;
+	struct regulator *lab_vreg;
 
 	void *priv;
 
@@ -401,7 +403,8 @@ int dsi_panel_parse_esd_reg_read_configs(struct dsi_panel *panel);
 
 void dsi_panel_ext_bridge_put(struct dsi_panel *panel);
 
-int dsi_backlight_update_dpms(struct dsi_backlight_config *bl, int power_state);
+int dsi_backlight_early_dpms(struct dsi_backlight_config *bl, int power_state);
+int dsi_backlight_late_dpms(struct dsi_backlight_config *bl, int power_state);
 
 int dsi_panel_bl_register(struct dsi_panel *panel);
 int dsi_panel_bl_unregister(struct dsi_panel *panel);
