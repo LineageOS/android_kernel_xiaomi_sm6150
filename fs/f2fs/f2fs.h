@@ -1061,6 +1061,10 @@ struct f2fs_bio_info {
 	struct list_head io_list;	/* track fios */
 };
 
+/* iv sector for security/pfe/pfk_fscrypt.c and f2fs */
+#define PG_DUN(i, p)                                            \
+	(((((u64)(i)->i_ino) & 0xffffffff) << 32) | ((p)->index & 0xffffffff))
+
 #define FDEV(i)				(sbi->devs[i])
 #define RDEV(i)				(raw_super->devs[i])
 struct f2fs_dev_info {
