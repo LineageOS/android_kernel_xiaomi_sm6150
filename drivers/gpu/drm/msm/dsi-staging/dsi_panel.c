@@ -3433,6 +3433,12 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	g_panel = panel;
 
 	drm_panel_init(&panel->drm_panel);
+	panel->drm_panel.dev = &panel->mipi_device.dev;
+	panel->mipi_device.dev.of_node = of_node;
+
+	rc = drm_panel_add(&panel->drm_panel);
+	if (rc)
+		goto error;
 	mutex_init(&panel->panel_lock);
 
 	return panel;
@@ -3444,6 +3450,8 @@ error:
 
 void dsi_panel_put(struct dsi_panel *panel)
 {
+	drm_panel_remove(&panel->drm_panel);
+
 	/* free resources allocated for ESD check */
 	dsi_panel_esd_config_deinit(&panel->esd_config);
 
