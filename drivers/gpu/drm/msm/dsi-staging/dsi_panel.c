@@ -573,6 +573,15 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	if (!panel || !panel->cur_mode)
 		return -EINVAL;
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	if (type == DSI_CMD_SET_DISP_HBM_FOD_ON)
+		ea_panel_mode_ctrl(panel, true);
+	else if (type > DSI_CMD_SET_POST_TIMING_SWITCH ||
+			 type < DSI_CMD_SET_CMD_TO_VID_SWITCH ||
+			 type == DSI_CMD_SET_DISP_HBM_FOD_OFF)
+		ea_panel_mode_ctrl(panel, false);
+#endif
+
 	mode = panel->cur_mode;
 
 	cmds = mode->priv_info->cmd_sets[type].cmds;
