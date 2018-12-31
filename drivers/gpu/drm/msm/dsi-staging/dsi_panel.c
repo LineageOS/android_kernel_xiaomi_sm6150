@@ -573,6 +573,15 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	if (!panel || !panel->cur_mode)
 		return -EINVAL;
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	if (type == DSI_CMD_SET_DISP_HBM_FOD_ON)
+		ea_panel_mode_ctrl(panel, true);
+	else if (type > DSI_CMD_SET_POST_TIMING_SWITCH ||
+		type < DSI_CMD_SET_CMD_TO_VID_SWITCH ||
+		type == DSI_CMD_SET_DISP_HBM_FOD_OFF)
+		ea_panel_mode_ctrl(panel, false);
+#endif
+
 	mode = panel->cur_mode;
 
 	cmds = mode->priv_info->cmd_sets[type].cmds;
@@ -5251,6 +5260,9 @@ static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 		panel->skip_dimmingon = STATE_DIM_BLOCK;
 		panel->fod_hbm_enabled = true;
 		drm_dev->hbm_status = 1;
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+		ea_panel_udfp_workaround();
+#endif
 		break;
 	case DISPPARAM_HBM_FOD2NORM:
 		pr_info("hbm fod to normal mode\n");
