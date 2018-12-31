@@ -27,6 +27,10 @@
 #include "sde_trace.h"
 #include <drm/drm_notifier.h>
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+#include "exposure_adjustment.h"
+#endif
+
 #define BL_NODE_NAME_SIZE 32
 
 enum bkl_dimming_state {
@@ -754,6 +758,12 @@ int sde_connector_update_hbm(struct sde_connector *c_conn)
 
 	dim_layer_status = sde_crtc_get_dim_layer_status(c_conn->encoder->crtc->state);
 	if (!dim_layer_status) {
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+		if (dim_layer_status == 0)
+		{
+			ea_panel_udfp_workaround();
+		}
+#endif
 		if (dsi_display->panel->fod_dimlayer_hbm_enabled) {
 			SDE_ATRACE_BEGIN("set_hbm_off");
 			mutex_lock(&dsi_display->panel->panel_lock);
