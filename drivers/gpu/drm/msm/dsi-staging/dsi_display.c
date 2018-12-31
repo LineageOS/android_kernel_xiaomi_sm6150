@@ -33,6 +33,10 @@
 #include "sde_dbg.h"
 #include "dsi_parser.h"
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+#include "exposure_adjustment.h"
+#endif
+
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
 #define NO_OVERRIDE -1
@@ -907,6 +911,14 @@ static int dsi_display_write_panel(struct dsi_display *display,
 		display->name, rc);
 		goto error;
 	}
+
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	if (cmd_sets == DSI_CMD_SET_DISP_HBM_FOD_ON)
+		ea_panel_mode_ctrl(panel, true);
+	else if (cmd_sets > DSI_CMD_SET_POST_TIMING_SWITCH ||
+		cmd_sets < DSI_CMD_SET_CMD_TO_VID_SWITCH)
+		ea_panel_mode_ctrl(panel, false);
+#endif
 
 	mode = panel->cur_mode;
 
