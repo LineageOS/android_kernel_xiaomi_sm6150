@@ -908,6 +908,12 @@ static int dsi_display_write_panel(struct dsi_display *display,
 		goto error;
 	}
 
+	if (cmd_sets == DSI_CMD_SET_DISP_HBM_FOD_ON)
+		ea_panel_mode_ctrl(panel, true);
+	else if ((cmd_sets > DSI_CMD_SET_POST_TIMING_SWITCH &&
+		cmd_sets < DSI_CMD_SET_CMD_TO_VID_SWITCH)
+		ea_panel_mode_ctrl(panel, false);
+
 	mode = panel->cur_mode;
 
 	cmds = cmd_sets->cmds;
