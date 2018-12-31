@@ -5251,6 +5251,7 @@ static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 		panel->skip_dimmingon = STATE_DIM_BLOCK;
 		panel->fod_hbm_enabled = true;
 		drm_dev->hbm_status = 1;
+		ea_panel_mode_ctrl(panel, true);
 		break;
 	case DISPPARAM_HBM_FOD2NORM:
 		pr_info("hbm fod to normal mode\n");
@@ -5280,6 +5281,7 @@ static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 		panel->fod_hbm_enabled = false;
 		panel->fod_hbm_off_time = ktime_add_ms(ktime_get(), panel->fod_off_dimming_delay);
 		drm_dev->hbm_status = 0;
+		ea_panel_mode_ctrl(panel, false);
 
 		{
 			struct dsi_display *display = NULL;
