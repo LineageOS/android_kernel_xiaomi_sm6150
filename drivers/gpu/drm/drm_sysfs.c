@@ -386,6 +386,16 @@ static ssize_t dim_layer_enable_show(struct device *device,
 	return snprintf(buf, PAGE_SIZE, fod_dimlayer_enabled ? "enabled\n" : "disabled\n");
 }
 
+static ssize_t hbm_status_show(struct device *device,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	struct drm_connector *connector = to_drm_connector(device);
+	struct drm_device *dev = connector->dev;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", dev->hbm_status);
+}
+
 static DEVICE_ATTR_RW(status);
 static DEVICE_ATTR_RO(enabled);
 static DEVICE_ATTR_RO(dpms);
@@ -396,6 +406,7 @@ static DEVICE_ATTR_RO(doze_brightness);
 static DEVICE_ATTR_RW(dim_layer_enable);
 static DEVICE_ATTR(dim_alpha, S_IRUGO|S_IWUSR, NULL, xm_fod_dim_layer_alpha_store);
 static DEVICE_ATTR_RO(fod_ui_ready);
+static DEVICE_ATTR_RO(hbm_status);
 
 static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_status.attr,
@@ -408,6 +419,7 @@ static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_dim_layer_enable.attr,
 	&dev_attr_dim_alpha.attr,
 	&dev_attr_fod_ui_ready.attr,
+	&dev_attr_hbm_status.attr,
 	NULL
 };
 
