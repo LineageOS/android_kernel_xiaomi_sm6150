@@ -198,6 +198,7 @@ struct drm_device {
 	int doze_state;
 	int pre_state;
 	int doze_brightness;
+	int hbm_status;
 };
 
 #endif
