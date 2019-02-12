@@ -793,7 +793,7 @@ static void msm_bus_fab_init_noc_ops(struct msm_bus_node_device_type *bus_dev)
 		msm_bus_bimc_set_ops(bus_dev);
 		break;
 	default:
-		MSM_BUS_ERR("%s: Invalid Bus type", __func__);
+		MSM_BUS_ERR("%s: Invalid Bus type\n", __func__);
 	}
 }
 
@@ -1823,7 +1823,7 @@ static int msm_bus_device_probe(struct platform_device *pdev)
 	unsigned int i = 1, ret;
 	struct msm_bus_device_node_registration *pdata;
 
-	MSM_BUS_ERR("msm_bus: Probe started");
+	MSM_BUS_DBG("msm_bus: Probe started\n");
 	/* If possible, get pdata from device-tree */
 	if (pdev->dev.of_node)
 		pdata = msm_bus_of_to_pdata(pdev);
@@ -1832,7 +1832,7 @@ static int msm_bus_device_probe(struct platform_device *pdev)
 			pdev->dev.platform_data;
 	}
 
-	MSM_BUS_ERR("msm_bus: DT Parsing complete");
+	MSM_BUS_DBG("msm_bus: DT Parsing complete\n");
 
 	if (IS_ERR_OR_NULL(pdata)) {
 		MSM_BUS_ERR("No platform data found");
