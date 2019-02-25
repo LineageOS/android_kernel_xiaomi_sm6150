@@ -146,7 +146,6 @@ bool fscrypt_is_ice_encryption_info_equal(const struct inode *inode1,
 		(memcmp(salt1, salt2,
 			fscrypt_get_ice_encryption_salt_size(inode1)) == 0))
 		return true;
-
 	return false;
 }
 

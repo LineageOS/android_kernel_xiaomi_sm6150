@@ -17,7 +17,7 @@
 #include "fscrypt_private.h"
 
 #if IS_ENABLED(CONFIG_FS_ENCRYPTION)
-static inline bool fscrypt_should_be_processed_by_ice(const struct inode *inode)
+static inline int fscrypt_should_be_processed_by_ice(const struct inode *inode)
 {
 	if (!inode->i_sb->s_cop)
 		return 0;
@@ -45,7 +45,7 @@ size_t fscrypt_get_ice_encryption_key_size(const struct inode *inode);
 size_t fscrypt_get_ice_encryption_salt_size(const struct inode *inode);
 
 #else
-static inline bool fscrypt_should_be_processed_by_ice(const struct inode *inode)
+static inline int fscrypt_should_be_processed_by_ice(const struct inode *inode)
 {
 	return 0;
 }
