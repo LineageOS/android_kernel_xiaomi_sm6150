@@ -27,7 +27,7 @@
 #include "exposure_adjustment.h"
 
 static struct drm_msm_pcc pcc_blk = {0};
-static bool pcc_backlight_enable = false;
+static bool pcc_backlight_enable = true;
 static u32 last_level = ELVSS_OFF_THRESHOLD;
 
 static int ea_panel_crtc_send_pcc(struct dsi_display *display,
@@ -102,7 +102,6 @@ static int ea_panel_send_pcc(u32 bl_lvl)
 	else
 		ea_coeff = EXPOSURE_ADJUSTMENT_MAX;
 
-	pr_info("ea_coeff = %X\n", ea_coeff);
 	r_data = ea_coeff;
 	g_data = ea_coeff;
 	b_data = ea_coeff;
