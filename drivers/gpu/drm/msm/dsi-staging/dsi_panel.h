@@ -254,6 +254,21 @@ struct dsi_panel {
 
 	struct brightness_alpha_pair *fod_dim_lut;
 	u32 fod_dim_lut_count;
+
+	const struct dsi_panel_funcs *funcs;
+};
+
+/**
+ * struct dsi_panel_funcs - functions that handle panel switch operations
+ *
+ * @idle: called when updates haven't been received for a while (idle)
+ * @wakeup: called when coming out of idle state
+ *
+ * Note: none of these functions should be called while holding panel_lock
+ */
+struct dsi_panel_funcs {
+	int (*idle)(struct dsi_panel *);
+	int (*wakeup)(struct dsi_panel *);
 };
 
 static inline bool dsi_panel_ulps_feature_enabled(struct dsi_panel *panel)
@@ -383,5 +398,8 @@ int dsi_panel_set_fod_hbm(struct dsi_panel *panel, bool status);
 u32 dsi_panel_get_fod_dim_alpha(struct dsi_panel *panel);
 
 int dsi_panel_apply_hbm_mode(struct dsi_panel *panel);
+
+int dsi_panel_idle(struct dsi_panel *panel);
+int dsi_panel_wakeup(struct dsi_panel *panel);
 
 #endif /* _DSI_PANEL_H_ */
