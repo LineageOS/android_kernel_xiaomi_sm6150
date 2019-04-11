@@ -4185,6 +4185,45 @@ int dsi_panel_get_lockdowninfo_for_tp(unsigned char *plockdowninfo)
 }
 EXPORT_SYMBOL(dsi_panel_get_lockdowninfo_for_tp);
 
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+static ssize_t set_ea_enable(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t len)
+{
+	u32 ea_enable;
+
+	if (sscanf(buf, "%d", &ea_enable) != 1) {
+		pr_err("sccanf buf error!\n");
+		return len;
+	}
+
+	ea_panel_mode_ctrl(g_panel, ea_enable != 0);
+
+	return len;
+}
+
+static ssize_t get_ea_enable(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int ret;
+	bool ea_enable = ea_panel_is_enabled();
+
+	ret = scnprintf(buf, PAGE_SIZE, "%d\n", ea_enable ? 1 : 0);
+
+	return ret;
+}
+
+static DEVICE_ATTR(ea_enable, S_IRUGO | S_IWUSR,
+	get_ea_enable, set_ea_enable);
+
+static struct attribute *ea_enable_fs_attrs[] = {
+	&dev_attr_ea_enable.attr,
+	NULL,
+};
+static struct attribute_group ea_enable_fs_attrs_group = {
+	.attrs = ea_enable_fs_attrs,
+};
+#endif
+
 int dsi_panel_drv_init(struct dsi_panel *panel,
 		       struct mipi_dsi_host *host)
 {
@@ -4237,6 +4276,13 @@ int dsi_panel_drv_init(struct dsi_panel *panel,
 			       panel->name, rc);
 		goto error_gpio_release;
 	}
+
+#ifdef CONFIG_EXPOSURE_ADJUSTMENT
+	rc = sysfs_create_group(&(panel->parent->kobj), &ea_enable_fs_attrs_group);
+	if (rc)
+		pr_err("failed to create ea_enable device attributes");
+	g_panel = panel;
+#endif
 
 #if DSI_READ_WRITE_PANEL_DEBUG
 		mipi_proc_entry = proc_create(MIPI_PROC_NAME, 0, NULL, &mipi_reg_proc_fops);

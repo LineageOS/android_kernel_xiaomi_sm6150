@@ -124,6 +124,11 @@ void ea_panel_mode_ctrl(struct dsi_panel *panel, bool enable)
 	}
 }
 
+bool ea_panel_is_enabled(void)
+{
+	return pcc_backlight_enable;
+}
+
 u32 ea_panel_calc_backlight(u32 bl_lvl)
 {
 	last_level = bl_lvl;
