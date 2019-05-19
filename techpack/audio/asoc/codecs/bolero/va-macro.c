@@ -46,7 +46,11 @@
 #define VA_MACRO_TX_DMIC_CLK_DIV_SHFT 0x01
 
 #define BOLERO_CDC_VA_TX_UNMUTE_DELAY_MS	40
+#ifdef CONFIG_MACH_XIAOMI_F7B
+#define MAX_RETRY_ATTEMPTS 250
+#else
 #define MAX_RETRY_ATTEMPTS 200
+#endif
 
 static const DECLARE_TLV_DB_SCALE(digital_gain, 0, 1, 0);
 static int va_tx_unmute_delay = BOLERO_CDC_VA_TX_UNMUTE_DELAY_MS;

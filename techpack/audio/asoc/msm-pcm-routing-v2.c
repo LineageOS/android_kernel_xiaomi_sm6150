@@ -14339,6 +14339,12 @@ static const struct snd_kcontrol_new primary_mi2s_rx_port_mixer_controls[] = {
 	MSM_BACKEND_DAI_PRI_MI2S_RX,
 	MSM_BACKEND_DAI_SEC_AUXPCM_TX, 1, 0, msm_routing_get_port_mixer,
 	msm_routing_put_port_mixer),
+#ifdef CONFIG_MACH_XIAOMI_F7B
+	SOC_DOUBLE_EXT("TX_CDC_DMA_TX_3", SND_SOC_NOPM,
+	MSM_BACKEND_DAI_PRI_MI2S_RX,
+	MSM_BACKEND_DAI_TX_CDC_DMA_TX_3, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+#endif
 };
 
 static const struct snd_kcontrol_new usb_rx_port_mixer_controls[] = {
@@ -21884,6 +21890,9 @@ static const struct snd_soc_dapm_route intercon[] = {
 
 	{"RX_CDC_DMA_RX_0_Voice Mixer", "VoiceMMode1", "VOICEMMODE1_DL"},
 	{"RX_CDC_DMA_RX_0_Voice Mixer", "VoiceMMode2", "VOICEMMODE2_DL"},
+#ifdef CONFIG_MACH_XIAOMI_F7B
+	{"RX_CDC_DMA_RX_0_Voice Mixer", "Voip", "VOIP_DL"},
+#endif
 	{"RX_CDC_DMA_RX_0", NULL, "RX_CDC_DMA_RX_0_Voice Mixer"},
 
 	{"VOC_EXT_EC MUX", "PRI_MI2S_TX", "PRI_MI2S_TX"},
@@ -22083,6 +22092,9 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"Voip_Tx Mixer", "QUAT_AUX_PCM_TX_Voip", "QUAT_AUX_PCM_TX"},
 	{"Voip_Tx Mixer", "QUIN_AUX_PCM_TX_Voip", "QUIN_AUX_PCM_TX"},
 	{"Voip_Tx Mixer", "PRI_MI2S_TX_Voip", "PRI_MI2S_TX"},
+#ifdef CONFIG_MACH_XIAOMI_F7B
+	{"Voip_Tx Mixer", "TX_CDC_DMA_TX_3_Voip", "TX_CDC_DMA_TX_3"},
+#endif
 	{"VOIP_UL", NULL, "Voip_Tx Mixer"},
 
 	{"SLIMBUS_DL_HL", "Switch", "SLIM0_DL_HL"},
@@ -22265,7 +22277,7 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"INT0_MI2S_RX", NULL, "INT0_MI2S_RX_DL_HL"},
 	{"INT4_MI2S_RX_DL_HL", "Switch", "INT4_MI2S_DL_HL"},
 	{"INT4_MI2S_RX", NULL, "INT4_MI2S_RX_DL_HL"},
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_MACH_XIAOMI
 	{"PRI_MI2S_RX_DL_HL", "Switch", "CDC_DMA_DL_HL"},
 #else
 	{"PRI_MI2S_RX_DL_HL", "Switch", "PRI_MI2S_DL_HL"},
@@ -22995,6 +23007,9 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"PRI_MI2S_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
 	{"PRI_MI2S_RX Port Mixer", "INTERNAL_FM_TX", "INT_FM_TX"},
 	{"PRI_MI2S_RX Port Mixer", "INTERNAL_BT_SCO_TX", "INT_BT_SCO_TX"},
+#ifdef CONFIG_MACH_XIAOMI_F7B
+	{"PRI_MI2S_RX Port Mixer", "TX_CDC_DMA_TX_3", "TX_CDC_DMA_TX_3"},
+#endif
 	{"PRI_MI2S_RX Port Mixer", "SLIM_8_TX", "SLIMBUS_8_TX"},
 	{"PRI_MI2S_RX Port Mixer", "SEC_AUX_PCM_UL_TX", "SEC_AUX_PCM_TX"},
 	{"PRI_MI2S_RX", NULL, "PRI_MI2S_RX Port Mixer"},

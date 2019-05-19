@@ -92,7 +92,7 @@ struct wcd937x_priv {
 	struct snd_info_entry *version_entry;
 	/*Entry for Variant info*/
 	struct snd_info_entry *variant_entry;
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_MACH_XIAOMI
 	int ear_rx_path;
 #endif
 #ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH

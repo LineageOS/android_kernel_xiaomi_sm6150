@@ -664,7 +664,7 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = true,
 	.key_code[0] = KEY_MEDIA,
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_MACH_XIAOMI
 	.key_code[1] = KEY_VOLUMEUP,
 	.key_code[2] = KEY_VOLUMEDOWN,
 	.key_code[3] = 0,
@@ -4772,7 +4772,9 @@ static int msm_audrx_tavil_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+#ifndef CONFIG_MACH_XIAOMI_F7B
 	struct snd_soc_component *aux_comp;
+#endif
 	struct snd_card *card;
 	struct snd_info_entry *entry;
 	struct msm_asoc_mach_data *pdata =
@@ -4875,6 +4877,7 @@ static int msm_audrx_tavil_init(struct snd_soc_pcm_runtime *rtd)
 	 */
 	pr_debug("%s: Number of aux devices: %d\n",
 		__func__, rtd->card->num_aux_devs);
+#ifndef CONFIG_MACH_XIAOMI_F7B
 	if (rtd->card->num_aux_devs &&
 	    !list_empty(&rtd->card->aux_comp_list)) {
 		aux_comp = list_first_entry(&rtd->card->aux_comp_list,
@@ -4886,6 +4889,7 @@ static int msm_audrx_tavil_init(struct snd_soc_pcm_runtime *rtd)
 					WCD934X_RX_GAIN_OFFSET_M1P5_DB);
 		}
 	}
+#endif
 
 	card = rtd->card->snd_card;
 	if (!pdata->codec_root) {
@@ -5215,14 +5219,20 @@ static void *def_wcd_mbhc_cal(void)
 #ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
 	btn_high[1] = 260;
 	btn_high[2] = 750;
+#elif defined CONFIG_MACH_XIAOMI_F7B
+	btn_high[1] = 225;
+	btn_high[2] = 450;
+#else
+	btn_high[1] = 150;
+	btn_high[2] = 237;
+#endif
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
 	btn_high[3] = 750;
 	btn_high[4] = 750;
 	btn_high[5] = 750;
 	btn_high[6] = 750;
 	btn_high[7] = 750;
 #else
-	btn_high[1] = 150;
-	btn_high[2] = 237;
 	btn_high[3] = 500;
 	btn_high[4] = 500;
 	btn_high[5] = 500;
@@ -6618,7 +6628,7 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_MACH_XIAOMI
 	{/* hw:x,37 */
 		.name = "Primary MI2S_RX Hostless",
 		.stream_name = "Primary MI2S_RX Hostless",
@@ -6633,6 +6643,8 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
+#endif
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
 	{/* hw:x,38 */
 		.name = "Primary MI2S_TX Hostless",
 		.stream_name = "Primary MI2S_TX Hostless",
@@ -6782,7 +6794,7 @@ static struct snd_soc_dai_link msm_int_compress_capture_dai[] = {
 	},
 };
 
-#if !((defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B))
+#ifndef CONFIG_MACH_XIAOMI
 static struct snd_soc_dai_link msm_bolero_fe_dai_links[] = {
 	{/* hw:x,37 */
 		.name = LPASS_BE_WSA_CDC_DMA_TX_0,
@@ -7954,7 +7966,7 @@ static struct snd_soc_dai_link msm_auxpcm_be_dai_links[] = {
 	},
 };
 
-#if !((defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B))
+#ifndef CONFIG_MACH_XIAOMI
 static struct snd_soc_dai_link msm_wsa_cdc_dma_be_dai_links[] = {
 	/* WSA CDC DMA Backend DAI Links */
 	{
@@ -8116,7 +8128,7 @@ static struct snd_soc_dai_link msm_rx_tx_cdc_dma_be_dai_links[] = {
 static struct snd_soc_dai_link msm_sm6150_dai_links[
 			 ARRAY_SIZE(msm_common_dai_links) +
 			 ARRAY_SIZE(msm_tavil_fe_dai_links) +
-#if !((defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B))
+#ifndef CONFIG_MACH_XIAOMI
 			 ARRAY_SIZE(msm_bolero_fe_dai_links) +
 #endif
 			 ARRAY_SIZE(msm_tasha_fe_dai_links) +
@@ -8132,7 +8144,7 @@ static struct snd_soc_dai_link msm_sm6150_dai_links[
 			 ARRAY_SIZE(ext_disp_be_dai_link) +
 			 ARRAY_SIZE(msm_mi2s_be_dai_links) +
 			 ARRAY_SIZE(msm_auxpcm_be_dai_links) +
-#if !((defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B))
+#ifndef CONFIG_MACH_XIAOMI
 			 ARRAY_SIZE(msm_wsa_cdc_dma_be_dai_links) +
 #endif
 			 ARRAY_SIZE(msm_rx_tx_cdc_dma_be_dai_links)];
@@ -8493,7 +8505,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 			total_links +=
 				ARRAY_SIZE(msm_tasha_fe_dai_links);
 		} else {
-#if !((defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B))
+#ifndef CONFIG_MACH_XIAOMI
 			memcpy(msm_sm6150_dai_links + total_links,
 				msm_bolero_fe_dai_links,
 				sizeof(msm_bolero_fe_dai_links));
@@ -8525,7 +8537,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 					sizeof(msm_tasha_be_dai_links));
 			total_links += ARRAY_SIZE(msm_tasha_be_dai_links);
 		} else {
-#if !((defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B))
+#ifndef CONFIG_MACH_XIAOMI
 			memcpy(msm_sm6150_dai_links + total_links,
 			       msm_wsa_cdc_dma_be_dai_links,
 			       sizeof(msm_wsa_cdc_dma_be_dai_links));
@@ -8577,6 +8589,12 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 					dev_info(dev, "%s: hardware is HARDWARE_PLATFORM_PHOENIX.\n", __func__);
 					msm_mi2s_be_dai_links[0].codec_name = "tfa98xx.1-0034";
 					msm_mi2s_be_dai_links[0].codec_dai_name = "tfa98xx-aif-1-34";
+				} else if (HARDWARE_PLATFORM_IDP == hw_platform) {
+					dev_info(dev, "%s: hardware is %d.\n", __func__, hw_platform);
+					msm_mi2s_be_dai_links[0].codec_name = "tas2563.3-004c";
+					msm_mi2s_be_dai_links[0].codec_dai_name = "tas2563 ASI1";
+					msm_mi2s_be_dai_links[1].codec_name = "tas2563.3-004c";
+					msm_mi2s_be_dai_links[1].codec_dai_name = "tas2563 ASI1";
 				} else {
 					dev_info(dev, "%s: hardware is unknown, %d.\n", __func__, hw_platform);
 					msm_mi2s_be_dai_links[0].codec_name = "msm-stub-codec.1";
