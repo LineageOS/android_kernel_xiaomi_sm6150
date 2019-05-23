@@ -75,6 +75,7 @@
 };
 
 &dsi_xiaomi_f4_41_06_0a_fhd_cmd {
+	qcom,mdss-dsi-panel-physical-type = "oled";
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_labibb_amoled>;
 	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
 	qcom,mdss-dsi-bl-min-level = <2>;
@@ -125,6 +126,7 @@
 };
 
 &dsi_xiaomi_f4_36_02_0b_fhd_cmd {
+	qcom,mdss-dsi-panel-physical-type = "oled";
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_labibb_amoled>;
 	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
 	qcom,mdss-dsi-bl-min-level = <2>;
@@ -175,6 +177,7 @@
 };
 
 &dsi_xiaomi_f4_42_06_0c_fhd_cmd {
+	qcom,mdss-dsi-panel-physical-type = "oled";
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_labibb_amoled>;
 	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
 	qcom,mdss-dsi-bl-min-level = <2>;
