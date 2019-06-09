@@ -375,8 +375,11 @@ struct cam_sensor_board_info {
 	int32_t  subdev_intf[SUB_MODULE_MAX];
 	const char *misc_regulator;
 	struct cam_sensor_power_ctrl_t power_info;
-#ifdef CONFIG_LDO_WL2866D
+#if (defined CONFIG_LDO_WL2866D) || (defined CONFIG_MACH_XIAOMI_VIOLET)
 	uint16_t camera_id;
+#endif
+#ifdef CONFIG_MACH_XIAOMI_VIOLET
+	const char *sensorName;
 #endif
 };
 
