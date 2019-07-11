@@ -67,11 +67,15 @@
 
 #define bio_multiple_segments(bio)				\
 	((bio)->bi_iter.bi_size != bio_iovec(bio).bv_len)
-#define bio_sectors(bio)	((bio)->bi_iter.bi_size >> 9)
-#define bio_end_sector(bio)	((bio)->bi_iter.bi_sector + bio_sectors((bio)))
-#define bio_dun(bio)		((bio)->bi_iter.bi_dun)
-#define bio_duns(bio)		(bio_sectors(bio) >> 3) /* 4KB unit */
-#define bio_end_dun(bio)	(bio_dun(bio) + bio_duns(bio))
+
+#define bvec_iter_sectors(iter)	((iter).bi_size >> 9)
+#define bvec_iter_end_sector(iter) ((iter).bi_sector + bvec_iter_sectors((iter)))
+
+#define bio_sectors(bio)	bvec_iter_sectors((bio)->bi_iter)
+#define bio_end_sector(bio)	bvec_iter_end_sector((bio)->bi_iter)
+
+#define bio_dun(bio)			((bio)->bi_iter.bi_dun)
+#define bio_end_dun(bio, sectors)	(bio_dun(bio) + ((sectors) >> 3))
 
 /*
  * Return the data direction, READ or WRITE.
