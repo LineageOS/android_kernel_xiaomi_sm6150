@@ -52,10 +52,6 @@
     reg = <0 0x97915000 0 0x2000>;
 };
 
-&cdsp_sec_mem {
-    reg = <0x0 0x9f800000 0x0 0xc00000>;
-};
-
 /* Reduce cont splash, display ramdump and dfps data
  * buffer size to 1000000.
  * 1000000 is taken from sm6150.dtsi.
