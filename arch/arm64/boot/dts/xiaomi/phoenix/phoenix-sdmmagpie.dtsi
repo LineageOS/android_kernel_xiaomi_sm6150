@@ -1,0 +1,43 @@
+/* Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../common/xiaomi-sdmmagpie-common.dtsi"
+#include "../common/xiaomi-sdmmagpie-ir.dtsi"
+
+#include "phoenix-audio-overlay.dtsi"
+#include "phoenix-sdmmagpie-audio.dtsi"
+#include "phoenix-sdmmagpie-battery.dtsi"
+#include "phoenix-sdmmagpie-camera-sensor.dtsi"
+#include "phoenix-sdmmagpie-display.dtsi"
+#include "phoenix-sdmmagpie-fingerprint.dtsi"
+#include "phoenix-sdmmagpie-leds.dtsi"
+#include "phoenix-sdmmagpie-pinctrl.dtsi"
+#include "phoenix-sdmmagpie-touchscreen.dtsi"
+#include "phoenix-sdmmagpie-usb.dtsi"
+
+&pm6150l_lcdb {
+    status = "okay";
+};
+
+&pm6150l_wled {
+    status = "okay";
+    qcom,string-cfg = <7>;
+    qcom,ovp = <28000>;
+    qcom,fs-current-limit = <22500>;
+    qcom,cabc-sel = <1>;
+};
+
+&sdhc_2 {
+    cd-gpios = <&tlmm 69 GPIO_ACTIVE_HIGH>;
+    status = "ok";
+};

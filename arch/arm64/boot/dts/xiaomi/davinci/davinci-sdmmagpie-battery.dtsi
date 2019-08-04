@@ -1,0 +1,131 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of davinci
+ * And public attribution of Xiaomi platforms (like F10 and so)
+ */
+ 
+#include <dt-bindings/iio/qcom,spmi-vadc.h>
+
+&soc {
+    mtp_batterydata: qcom,battery-data {
+        qcom,batt-id-range-pct = <15>;
+        #include "battery/batterydata-F10-coslight-4000mah.dtsi"
+        #include "battery/batterydata-F10-sunwoda-4000mah.dtsi"
+    };
+};
+
+&pm6150_qg {
+    qcom,battery-data = <&mtp_batterydata>;
+    qcom,vbatt-cutoff-mv = <3400>;
+    qcom,vbatt-low-mv = <3300>;
+    qcom,vbatt-low-cold-mv = <3700>;
+    qcom,vbatt-empty-mv = <3100>;
+    qcom,vbatt-empty-cold-mv = <3100>;
+    qcom,s3-entry-fifo-length = <2>;
+    qcom,s3-entry-ibat-ua = <25000>;
+    qcom,s3-exit-ibat-ua = <45000>;
+    qcom,qg-iterm-ma = <350>;
+    qcom,hold-soc-while-full;
+    qcom,linearize-soc;
+    qcom,cl-feedback-on;
+    qcom,shutdown-soc-threshold = <3>;
+};
+
+&pm6150_charger {
+    io-channels = <&pm6150_vadc ADC_USB_IN_V_16>,
+              <&pm6150_vadc ADC_USB_IN_I>,
+              <&pm6150_vadc ADC_CHG_TEMP>,
+              <&pm6150_vadc ADC_DIE_TEMP>,
+              <&pm6150l_vadc ADC_AMUX_THM1_PU2>,
+              <&pm6150_vadc ADC_SBUx>,
+              <&pm6150_vadc ADC_VPH_PWR>;
+    io-channel-names = "usb_in_voltage",
+               "usb_in_current",
+               "chg_temp",
+               "die_temp",
+               "conn_temp",
+               "sbux_res",
+               "vph_voltage";
+    qcom,battery-data = <&mtp_batterydata>;
+    qcom,usb-icl-ua = <2800000>;
+    qcom,fcc-max-ua = <3500000>;
+    qcom,fv-max-uv = <4400000>;
+    qcom,auto-recharge-soc = <99>;
+    qcom,chg-term-src = <1>;
+    qcom,chg-term-current-ma = <(-200)>;
+    qcom,sec-charger-config = <1>;
+    qcom,dynamic-fv-enable;
+    qcom,thermal-mitigation = <3500000 3400000 3300000 3200000 3100000 3000000 2900000
+                   2800000 2600000 2400000 2200000 2000000 1800000 1500000
+                   1000000 500000>;
+    qcom,thermal-mitigation-icl
+                 = <2800000 2700000 2600000 2400000 2200000 2100000 2000000
+                   2000000 2000000 1900000 1800000 1600000 1500000 1300000
+                   1000000 750000>;
+    qcom,thermal-mitigation-dcp
+                = <1800000 1800000 1800000 1800000 1800000 1800000 1800000
+                   1800000 1800000 1700000 1600000 1400000 1200000 1100000
+                   1100000 1000000>;
+    qcom,thermal-mitigation-qc2
+                = <1500000 1500000 1500000 1500000 1450000 1400000 1350000
+                   1300000 1150000 1100000 1000000 900000 850000 750000
+                   650000 500000>;
+    qcom,thermal-fcc-qc3-normal
+                = <3500000 3400000 3300000 3200000 3100000 3000000 2900000
+                   2800000 2700000 2600000 2400000 2200000 2000000 2000000
+                   750000 700000>;
+    qcom,thermal-fcc-qc3-cp
+                = <3500000 3500000 3500000 3500000 3400000 3300000 3200000
+                   3100000 3000000 2800000 2600000 2400000 2200000 2000000
+                   1000000 700000>;
+    qcom,thermal-mitigation-pd-base
+                = <3500000 3500000 3500000 3500000 3400000 3300000 3200000
+                   3100000 3000000 2800000 2600000 2400000 2200000 2000000
+                   1000000 700000>;
+    qcom,thermal-fcc-pps-cp
+                = <3500000 3500000 3500000 3500000 3400000 3300000 3200000
+                   3100000 3000000 2800000 2600000 2400000 2200000 2000000
+                   1000000 700000>;
+    dpdm-supply = <&qusb_phy0>;
+    qcom,sw-jeita-enable;
+    qcom,step-charging-enable;
+    qcom,lpd-disable;
+};
+
+&pm6150_gpios {
+    smb_stat {
+        smb_stat_default: smb_stat_default {
+            pins = "gpio3";
+            function = "normal";
+            input-enable;
+            bias-pull-up;
+            qcom,pull-up-strength = <PMIC_GPIO_PULL_UP_30>;
+            power-source = <0>;
+        };
+    };
+};
+
+&qupv3_se8_2uart {
+    status = "ok";
+};
+
+&qupv3_se9_i2c {
+    status = "ok";
+    #include "../qcom-base/smb1390.dtsi"
+};
+
+&smb1390 {
+    /delete-property/ interrupts;
+    interrupts = <0x0 0xc2 0x0 IRQ_TYPE_LEVEL_LOW>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&smb_stat_default>;
+    status = "ok";
+};
+
+&smb1390_charger {
+    compatible = "qcom,smb1390-charger-psy";
+    io-channels = <&pm6150l_vadc ADC_AMUX_THM2>;
+    io-channel-names = "cp_die_temp";
+    status = "ok";
+};

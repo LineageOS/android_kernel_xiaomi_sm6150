@@ -1,0 +1,35 @@
+/*
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&qupv3_se4_i2c {
+    status = "ok";
+    tfa98xx@34 {
+        compatible = "nxp,tfa98xx";
+        reset-gpio = <&tlmm 67 0>;
+        irq-gpio = <&tlmm 56 0>;
+        interrupt-parent = <&tlmm>;
+        interrupts = <56 0>;
+        interrupt-names = "smartpa_irq";
+        pinctrl-names = "default", "sleep";
+        pinctrl-0 = <&smartpa_int_active &smartpa_enable_active>;
+        pinctrl-1 = <&smartpa_int_suspend &smartpa_enable_suspend>;
+        reg = <0x34>;
+        status = "ok";
+    };
+};
+
+&wcd937x_codec {
+    compatible = "qcom,wcd937x-codec";
+    qcom,cdc-micbias1-mv = <2750>;
+    qcom,cdc-micbias3-mv = <2750>;
+};

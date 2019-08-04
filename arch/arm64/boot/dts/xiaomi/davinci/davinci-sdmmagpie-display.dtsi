@@ -1,0 +1,86 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of davinci
+ * And public attribution of Xiaomi platforms (like F10 and so)
+ */
+ 
+#include "../common/xiaomi-sdmmagpie-display.dtsi"
+
+#include "display/dsi-panel-ss-fhd-ea-f10-cmd.dtsi"
+#include "display/dsi-panel-ss-fhd-eb-f10-cmd.dtsi"
+
+&soc {
+    dsi_ss_fhd_ea_f10_cmd_display: qcom,dsi-display@22 {
+        label = "dsi_ss_fhd_ea_f10_cmd_display";
+        qcom,display-type = "primary";
+
+        qcom,dsi-ctrl-num = <0>;
+        qcom,dsi-phy-num = <0>;
+        qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+        qcom,dsi-panel = <&dsi_ss_fhd_ea_f10_cmd>;
+    };
+
+    dsi_ss_fhd_eb_f10_cmd_display: qcom,dsi-display@23 {
+
+        label = "dsi_ss_fhd_eb_f10_cmd_display";
+        qcom,display-type = "primary";
+
+        qcom,dsi-ctrl-num = <0>;
+        qcom,dsi-phy-num = <0>;
+        qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+
+        qcom,dsi-panel = <&dsi_ss_fhd_eb_f10_cmd>;
+    };
+};
+
+&sde_dsi {
+    qcom,dsi-display-list =
+        <&dsi_ss_fhd_ea_f10_cmd_display
+        &dsi_ss_fhd_eb_f10_cmd_display>;
+};
+
+&dsi_ss_fhd_ea_f10_cmd {
+    qcom,panel-supply-entries = <&dsi_panel_pwr_supply_labibb_amoled>;
+    qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
+    qcom,mdss-dsi-bl-min-level = <2>;
+    qcom,mdss-dsi-bl-max-level = <2047>;
+    qcom,mdss-dsi-mode-sel-gpio-state = "single_port";
+    qcom,platform-te-gpio = <&tlmm 10 0>;
+    qcom,platform-reset-gpio = <&pm6150l_gpios 9 0>;
+
+    qcom,mdss-dsi-t-clk-post = <0x0F>;
+    qcom,mdss-dsi-t-clk-pre = <0x37>;
+
+    qcom,mdss-dsi-panel-fod-dimlayer-enabled;
+    qcom,mdss-dsi-display-timings {
+        timing@0{
+            qcom,mdss-dsi-panel-phy-timings = [00 24 0A 0A 26 25 09
+                0A 06 02 04 00];
+            qcom,display-topology = <1 0 1>;
+            qcom,default-topology-index = <0>;
+        };
+    };
+};
+
+&dsi_ss_fhd_eb_f10_cmd {
+    qcom,panel-supply-entries = <&dsi_panel_pwr_supply_labibb_amoled>;
+    qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
+    qcom,mdss-dsi-bl-min-level = <256>;
+    qcom,mdss-dsi-bl-max-level = <4095>;
+    qcom,mdss-dsi-mode-sel-gpio-state = "single_port";
+    qcom,platform-te-gpio = <&tlmm 10 0>;
+    qcom,platform-reset-gpio = <&pm6150l_gpios 9 0>;
+
+    qcom,mdss-dsi-t-clk-post = <0x0F>;
+    qcom,mdss-dsi-t-clk-pre = <0x37>;
+    qcom,mdss-dsi-display-timings {
+        timing@0{
+            qcom,mdss-dsi-panel-phy-timings = [00 24 0A 0A 26 25 09
+                0A 06 02 04 00];
+            qcom,display-topology = <1 0 1>;
+            qcom,default-topology-index = <0>;
+        };
+    };
+};
+

@@ -1,0 +1,85 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ */
+
+#include "../qcom-base/sdmmagpie-audio-overlay.dtsi"
+
+&fsa4480 {
+    status = "disabled";
+};
+
+&sm6150_snd {
+    qcom,model = "sm6150-idp-snd-card";
+    qcom,msm-mi2s-master = <1>, <1>, <1>, <1>, <1>;
+    qcom,ext-disp-audio-rx = <1>;
+    qcom,msm-mbhc-hphl-swh = <1>;
+    qcom,msm-mbhc-gnd-swh = <1>;
+    qcom,cdc-dmic01-gpios = <&cdc_dmic01_gpios>;
+    qcom,cdc-dmic23-gpios = <&cdc_dmic23_gpios>;
+    qcom,pri-mi2s-gpios = <&cdc_pri_mi2s_gpios>;
+    asoc-codec  = <&stub_codec>, <&bolero>, <&ext_disp_audio_codec>;
+    asoc-codec-names = "msm-stub-codec.1", "bolero_codec",
+               "msm-ext-disp-audio-codec-rx";
+    qcom,wsa-max-devs = <0>;
+    /delete-property/ qcom,wsa-aux-dev-prefix;
+    qcom,codec-aux-devs = <&wcd937x_codec>;
+    qcom,msm_audio_ssr_devs = <&audio_apr>, <&q6core>,
+                <&lpi_tlmm>, <&bolero>;
+    /delete-property/ fsa4480-i2c-handle;
+};
+
+&wsa_swr_gpios {
+    status = "disabled";
+};
+
+&wsa_spkr_en1 {
+    status = "disabled";
+};
+
+&wsa_spkr_en2 {
+    status = "disabled";
+};
+
+&soc {
+    cdc_pri_mi2s_gpios: msm_cdc_pinctrl_pri {
+        compatible = "qcom,msm-cdc-pinctrl";
+        pinctrl-names = "aud_active", "aud_sleep";
+        pinctrl-0 = <&pri_i2s_sck_active &pri_i2s_ws_active
+                 &pri_i2s_data0_active &pri_i2s_data1_active>;
+        pinctrl-1 = <&pri_i2s_sck_sleep &pri_i2s_ws_sleep
+                 &pri_i2s_data0_sleep &pri_i2s_data1_sleep>;
+    };
+};
+
+&dai_mi2s0 {
+    compatible = "qcom,msm-dai-q6-mi2s";
+    qcom,msm-dai-q6-mi2s-dev-id = <0>;
+    qcom,msm-mi2s-rx-lines = <1>;
+    qcom,msm-mi2s-tx-lines = <2>;
+};
+
+&bolero {
+    qcom,num-macros = <3>;
+};
+
+&swr2 {
+    qcom,swr-mstr-tx-wakeup-capable;
+};
+
+&wsa_macro {
+    status = "disabled";
+};
+
+&tdm_sen_tx {
+    status = "disabled";
+};
+
+&tdm_sen_rx {
+    status = "disabled";
+};
+
+&wcd937x_codec {
+    qcom,cdc-micbias1-mv = <2750>;
+    qcom,cdc-micbias3-mv = <2750>;
+};

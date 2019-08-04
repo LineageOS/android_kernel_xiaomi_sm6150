@@ -1,0 +1,23 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of davinci
+ * And public attribution of Xiaomi platforms (like F10 and so)
+ */
+
+#include "../common/xiaomi-sdmmagpie-touchscreen.dtsi"
+
+&gt9886 {
+    goodix,avdd-gpio = <&tlmm 5 0x0>;           /* 1v8 */
+    goodix,cfg-name = "goodix_gt9886_cfg_f10.bin";
+    sensor0 {
+          goodix,limit-name = "goodix_gt9886_limit_f10_second.tporder";
+          goodix,fw-name = "goodix_gt9886_fw_f10.bin";
+          goodix,x2x;
+          goodix,y2y;
+    };
+    sensor1 {
+          goodix,limit-name = "goodix_gt9886_limit_f10_first.tporder";
+          goodix,fw-name = "goodix_gt9886_fw_f10.bin";
+    };
+};

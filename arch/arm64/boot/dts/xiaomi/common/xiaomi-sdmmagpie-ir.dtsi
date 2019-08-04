@@ -1,0 +1,16 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of phoenix
+ * And public attribution of Xiaomi platforms (like G7B and so)
+ */
+
+&qupv3_se8_spi {
+    status = "ok";
+    irled@0 {
+        compatible = "ir-spi";
+        reg = <0x0>;
+        status = "ok";
+        spi-max-frequency = <19200000>;
+    };
+};

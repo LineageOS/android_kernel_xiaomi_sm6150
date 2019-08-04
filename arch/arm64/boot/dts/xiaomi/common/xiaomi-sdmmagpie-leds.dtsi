@@ -1,0 +1,8 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ */
+
+&red_led {
+    status = "disabled";
+};

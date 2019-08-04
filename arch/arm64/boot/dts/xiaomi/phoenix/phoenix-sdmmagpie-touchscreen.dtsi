@@ -1,0 +1,18 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of phoenix
+ * And public attribution of Xiaomi platforms (like G7B and so)
+ */
+
+#include "novatek-nt36xxx-spi.dtsi"
+
+&qupv3_se4_spi {
+    status = "ok";
+    touch_spi@0 {
+        compatible = "xiaomi,spi-for-tp";
+        reg = <0>;
+        status = "ok";
+        spi-max-frequency = <10000000>;  //10M
+    };
+};

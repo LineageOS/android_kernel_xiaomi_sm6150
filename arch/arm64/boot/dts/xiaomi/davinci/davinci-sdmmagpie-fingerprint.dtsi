@@ -1,0 +1,16 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of davinci
+ * And public attribution of Xiaomi platforms (like F10 and so)
+ */
+
+&soc {
+    fingerprint_goodix {
+        compatible = "goodix,fingerprint";
+        goodix,gpio-reset = <&tlmm 65 0x0>;
+        goodix,gpio-irq = <&tlmm 69 0x0>;
+        fp-gpio-pwr = <&tlmm 63 0>;
+        status = "ok";
+    };
+};

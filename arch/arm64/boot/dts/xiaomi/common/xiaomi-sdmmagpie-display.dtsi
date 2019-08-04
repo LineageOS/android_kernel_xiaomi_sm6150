@@ -1,0 +1,32 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ */
+ 
+#include "../qcom-base/sdmmagpie-sde-display.dtsi"
+
+&dsi_panel_pwr_supply {
+    qcom,panel-supply-entry@2 {
+        /delete-property/ qcom,supply-post-on-sleep;
+    };
+};
+
+&dsi_panel_pwr_supply_labibb_amoled {
+    qcom,panel-supply-entry@0 {
+        qcom,supply-min-voltage = <1880000>;
+        qcom,supply-max-voltage = <1880000>;
+    };
+};
+
+&mdss_dsi_phy0 {
+    qcom,panel-allow-phy-poweroff;
+    qcom,ulps-enabled;
+};
+
+/* From sdmmagpie-sde.dtsi start */
+&mdss_mdp {
+    clock-rate = <0 0 0 0 344000000 19200000 200000000
+      200000000>;
+    qcom,sde-num-mnoc-ports = <1>;
+    qcom,sde-axi-bus-width = <32>;
+};

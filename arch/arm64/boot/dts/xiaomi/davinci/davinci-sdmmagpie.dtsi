@@ -1,0 +1,18 @@
+/*
+ *
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of davinci
+ * And public attribution of Xiaomi platforms (like F10 and so)
+ */
+
+#include "../common/xiaomi-sdmmagpie-common.dtsi"
+
+#include "davinci-sdmmagpie-audio.dtsi"
+#include "davinci-sdmmagpie-battery.dtsi"
+#include "davinci-sdmmagpie-camera-sensor.dtsi"
+#include "davinci-sdmmagpie-display.dtsi"
+#include "davinci-sdmmagpie-fingerprint.dtsi"
+#include "davinci-sdmmagpie-motor.dtsi"
+#include "davinci-sdmmagpie-pinctrl.dtsi"
+#include "davinci-sdmmagpie-touchscreen.dtsi"

@@ -1,0 +1,125 @@
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../qcom-base/sdmmagpie-thermal-overlay.dtsi"
+
+#include "xiaomi-sdmmagpie-audio.dtsi"
+#include "xiaomi-sdmmagpie-gpu.dtsi"
+#include "xiaomi-sdmmagpie-leds.dtsi"
+#include "xiaomi-sdmmagpie-memory.dtsi"
+#include "xiaomi-sdmmagpie-nfc.dtsi"
+#include "xiaomi-sdmmagpie-pinctrl.dtsi"
+#include "xiaomi-sdmmagpie-regulator.dtsi"
+#include "xiaomi-sdmmagpie-usb.dtsi"
+
+&firmware {
+    android {
+        vbmeta {
+            parts = "vbmeta,boot,system,vendor,dtbo,recovery";
+        };
+        fstab {
+            vendor {
+                fsmgr_flags = "wait,avb";
+            };
+        };
+    };
+};
+
+&wdog {
+    qcom,bark-time = <20000>;
+    qcom,pet-time = <15000>;
+};
+
+&ufsphy_mem {
+    compatible = "qcom,ufs-phy-qmp-v3";
+
+    vdda-phy-supply = <&pm6150_l4>; /* 0.88v */
+    vdda-phy-always-on;
+    vdda-pll-supply = <&pm6150l_l3>; /* 1.2v */
+    vdda-phy-max-microamp = <62900>;
+    vdda-pll-max-microamp = <18300>;
+
+    status = "ok";
+};
+
+&ufshc_mem {
+    vdd-hba-supply = <&ufs_phy_gdsc>;
+    vdd-hba-fixed-regulator;
+    vcc-supply = <&pm6150_l19>;
+    vcc-voltage-level = <2950000 2960000>;
+    vccq2-supply = <&pm6150_l12>;
+    vccq2-voltage-level = <1750000 1950000>;
+    vcc-max-microamp = <600000>;
+    vccq2-max-microamp = <600000>;
+
+    qcom,vddp-ref-clk-supply = <&pm6150l_l3>;
+    qcom,vddp-ref-clk-max-microamp = <100>;
+
+    spm-level = <3>;
+
+    status = "ok";
+};
+
+&sdhc_1 {
+    vdd-supply = <&pm6150_l19>;
+    qcom,vdd-voltage-level = <2950000 2950000>;
+    qcom,vdd-current-level = <0 570000>;
+
+    vdd-io-supply = <&pm6150_l12>;
+    qcom,vdd-io-always-on;
+    qcom,vdd-io-lpm-sup;
+    qcom,vdd-io-voltage-level = <1800000 1800000>;
+    qcom,vdd-io-current-level = <0 325000>;
+
+    pinctrl-names = "active", "sleep";
+    pinctrl-0 = <&sdc1_clk_on &sdc1_cmd_on &sdc1_data_on &sdc1_rclk_on>;
+    pinctrl-1 = <&sdc1_clk_off &sdc1_cmd_off &sdc1_data_off &sdc1_rclk_off>;
+
+    status = "ok";
+};
+
+&sdhc_2 {
+    vdd-supply = <&pm6150l_l9>;
+    qcom,vdd-voltage-level = <2950000 2950000>;
+    qcom,vdd-current-level = <0 800000>;
+
+    vdd-io-supply = <&pm6150l_l6>;
+    qcom,vdd-io-voltage-level = <1800000 2950000>;
+    qcom,vdd-io-current-level = <0 22000>;
+
+    pinctrl-names = "active", "sleep";
+    pinctrl-0 = <&sdc2_clk_on  &sdc2_cmd_on &sdc2_data_on &sdc2_cd_on>;
+    pinctrl-1 = <&sdc2_clk_off &sdc2_cmd_off &sdc2_data_off &sdc2_cd_off>;
+
+    status = "disabled";
+};
+
+&soc {
+    gpio_keys {
+        compatible = "gpio-keys";
+        label = "gpio-keys";
+
+        pinctrl-names = "default";
+        pinctrl-0 = <&key_vol_up_default>;
+
+        vol_up {
+            label = "volume_up";
+            gpios = <&pm6150l_gpios 2 GPIO_ACTIVE_LOW>;
+            linux,input-type = <1>;
+            linux,code = <KEY_VOLUMEUP>;
+            linux,can-disable;
+            debounce-interval = <15>;
+            gpio-key,wakeup;
+        };
+    };
+};

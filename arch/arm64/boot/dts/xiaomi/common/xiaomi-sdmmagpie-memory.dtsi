@@ -1,0 +1,82 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ */
+
+/* Enlarge TZ memory size to 62M */
+&removed_region {
+    reg = <0 0x86200000 0 0x4900000>;
+};
+
+&qcom_seecom {
+    reg = <0x86d00000 0x3E00000>;
+};
+
+&qcom_smcinvoke {
+    reg = <0x86d00000 0x3E00000>;
+};
+
+&pil_modem_mem {
+    reg = <0 0x8b000000 0 0x7e00000>;
+};
+
+&pil_video_mem {
+    reg = <0 0x92e00000 0 0x500000>;
+};
+
+&pil_cdsp_mem {
+    reg = <0 0x93300000 0 0x1e00000>;
+};
+
+&pil_adsp_mem {
+    reg = <0 0x95100000 0 0x2600000>;
+};
+
+&wlan_msa_mem {
+    reg = <0 0x97700000 0 0x180000>;
+};
+
+&npu_mem {
+    reg = <0 0x97880000 0 0x80000>;
+};
+
+&pil_ipa_fw_mem {
+    reg = <0 0x97900000 0 0x10000>;
+};
+
+&pil_ipa_gsi_mem {
+    reg = <0 0x97910000 0 0x5000>;
+};
+
+&pil_gpu_mem {
+    reg = <0 0x97915000 0 0x2000>;
+};
+
+&cdsp_sec_mem {
+    reg = <0x0 0x9f800000 0x0 0xc00000>;
+};
+
+/* Reduce cont splash, display ramdump and dfps data
+ * buffer size to 1000000.
+ * 1000000 is taken from sm6150.dtsi.
+ */
+&cont_splash_memory {
+    reg = <0x0 0x9c000000 0x0 0x01000000>;
+};
+
+&disp_rdump_memory {
+    reg = <0x0 0x9d000000 0x0 0x01000000>;
+};
+
+&dfps_data_memory {
+    reg = <0x0 0x9e000000 0x0 0x0100000>;
+};
+
+&reserved_memory {
+    ramoops {
+        compatible = "ramoops";
+        reg = <0 0xa1600000 0 0x800000>;
+        console-size = <0x400000>;
+        pmsg-size = <0x400000>;
+    };
+};

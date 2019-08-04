@@ -1,0 +1,14 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of phoenix
+ * And public attribution of Xiaomi platforms (like G7B and so)
+ */
+
+&blue_led {
+    label = "white";
+};
+
+&green_led {
+    status = "disabled";
+};
