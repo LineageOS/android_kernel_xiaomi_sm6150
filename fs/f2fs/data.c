@@ -882,25 +882,17 @@ int f2fs_merge_page_bio(struct f2fs_io_info *fio)
 	trace_f2fs_submit_page_bio(page, fio);
 	f2fs_trace_ios(fio, 0);
 
-	if (bio && !page_is_mergeable(fio->sbi, bio, *fio->last_block,
-						fio->new_blkaddr))
-		f2fs_submit_merged_ipu_write(fio->sbi, &bio, NULL);
-
 	dun = PG_DUN(inode, fio->page);
 	bi_crypt_skip = fio->encrypted_page ? 1 : 0;
 	bio_encrypted = f2fs_may_encrypt_bio(inode, fio);
 
-	if (bio && (*fio->last_block + 1 != fio->new_blkaddr ||
-			!__same_bdev(fio->sbi, fio->new_blkaddr, bio))) {
-		f2fs_submit_bio(fio->sbi, bio, fio->type);
-		bio = NULL;
-	}
+	if (bio && !page_is_mergeable(fio->sbi, bio, *fio->last_block,
+						fio->new_blkaddr))
+		f2fs_submit_merged_ipu_write(fio->sbi, &bio, NULL);
 
 	/* ICE support */
-	if (!fscrypt_mergeable_bio(bio, dun, bio_encrypted, bi_crypt_skip)) {
-		f2fs_submit_bio(fio->sbi, bio, fio->type);
-		bio = NULL;
-	}
+	if (!fscrypt_mergeable_bio(bio, dun, bio_encrypted, bi_crypt_skip))
+		f2fs_submit_merged_ipu_write(fio->sbi, &bio, NULL);
 
 alloc_new:
 	if (!bio) {
@@ -910,7 +902,6 @@ alloc_new:
 		if (bio_encrypted)
 			fscrypt_set_ice_dun(inode, bio, dun);
 		fscrypt_set_ice_skip(bio, bi_crypt_skip);
-	}
 
 		add_bio_entry(fio->sbi, bio, page, fio->temp);
 	} else {
@@ -1041,13 +1032,10 @@ static struct bio *f2fs_grab_read_bio(struct inode *inode, block_t blkaddr,
 		return ERR_PTR(-ENOMEM);
 	f2fs_target_device(sbi, blkaddr, bio);
 	bio->bi_end_io = f2fs_read_end_io;
-	bio_set_op_attrs(bio, REQ_OP_READ,
-			 (f2fs_encrypted_inode(inode) ?
-			  REQ_NOENCRYPT :
-			  op_flag));
+	bio_set_op_attrs(bio, REQ_OP_READ, op_flag);
 
 	if (f2fs_encrypted_file(inode) &&
-		!fscrypt_using_hardware_encryption(inode))
+	    !fscrypt_using_hardware_encryption(inode))
 		post_read_steps |= 1 << STEP_DECRYPT;
 	if (f2fs_compressed_file(inode))
 		post_read_steps |= 1 << STEP_DECOMPRESS_NOWQ;
@@ -1850,7 +1838,6 @@ static int f2fs_xattr_fiemap(struct inode *inode,
 			return err;
 		}
 
-
 		phys = (__u64)blk_to_logical(inode, ni.blk_addr);
 		offset = offsetof(struct f2fs_inode, i_addr) +
 					sizeof(__le32) * (DEF_ADDRS_PER_INODE -
@@ -2063,6 +2050,8 @@ static int f2fs_read_single_page(struct inode *inode, struct page *page,
 	sector_t last_block;
 	sector_t last_block_in_file;
 	sector_t block_nr;
+	bool bio_encrypted;
+	u64 dun;
 	int ret = 0;
 
 	block_in_file = (sector_t)page_index(page);
@@ -2133,6 +2122,14 @@ submit_and_realloc:
 		__submit_bio(F2FS_I_SB(inode), bio, DATA);
 		bio = NULL;
 	}
+
+	dun = PG_DUN(inode, page);
+	bio_encrypted = f2fs_may_encrypt_bio(inode, NULL);
+	if (!fscrypt_mergeable_bio(bio, dun, bio_encrypted, 0)) {
+		f2fs_submit_bio(F2FS_I_SB(inode), bio, DATA);
+		bio = NULL;
+	}
+
 	if (bio == NULL) {
 		bio = f2fs_grab_read_bio(inode, block_nr, nr_pages,
 				is_readahead ? REQ_RAHEAD : 0, page->index,
@@ -2142,6 +2139,8 @@ submit_and_realloc:
 			bio = NULL;
 			goto out;
 		}
+		if (bio_encrypted)
+			fscrypt_set_ice_dun(inode, bio, dun);
 	}
 
 	/*
@@ -2183,6 +2182,8 @@ int f2fs_read_multi_pages(struct compress_ctx *cc, struct bio **bio_ret,
 	const unsigned blkbits = inode->i_blkbits;
 	const unsigned blocksize = 1 << blkbits;
 	struct decompress_io_ctx *dic = NULL;
+	bool bio_encrypted;
+	u64 dun;
 	int i;
 	int ret = 0;
 
@@ -2265,6 +2266,13 @@ submit_and_realloc:
 			bio = NULL;
 		}
 
+		dun = PG_DUN(inode, page);
+		bio_encrypted = f2fs_may_encrypt_bio(inode, NULL);
+		if (!fscrypt_mergeable_bio(bio, dun, bio_encrypted, 0)) {
+			f2fs_submit_bio(sbi, bio, DATA);
+			bio = NULL;
+		}
+
 		if (!bio) {
 			bio = f2fs_grab_read_bio(inode, blkaddr, nr_pages,
 					is_readahead ? REQ_RAHEAD : 0,
@@ -2283,6 +2291,8 @@ submit_and_realloc:
 				*bio_ret = NULL;
 				return ret;
 			}
+			if (bio_encrypted)
+				fscrypt_set_ice_dun(inode, bio, dun);
 		}
 
 		f2fs_wait_on_block_writeback(inode, blkaddr);

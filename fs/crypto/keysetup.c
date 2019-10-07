@@ -44,6 +44,12 @@ struct fscrypt_mode fscrypt_modes[] = {
 		.keysize = 32,
 		.ivsize = 32,
 	},
+	[FSCRYPT_MODE_PRIVATE] = {
+		.friendly_name = "Inline encryption (AES-256-XTS)",
+		.cipher_str = NULL,
+		.keysize = 64,
+		.ivsize = 16,
+	},
 };
 
 static DEFINE_MUTEX(fscrypt_mode_key_setup_mutex);
@@ -423,7 +429,7 @@ static void put_crypt_info(struct fscrypt_info *ci)
 			key_invalidate(key);
 		key_put(key);
 	}
-	memzero_explicit(ci, sizeof(*ci));
+	memzero_explicit(ci, sizeof(*ci)); /* sanitizes ->ci_raw_key */
 	kmem_cache_free(fscrypt_info_cachep, ci);
 }
 

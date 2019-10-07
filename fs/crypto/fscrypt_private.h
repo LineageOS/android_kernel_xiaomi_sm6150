@@ -19,6 +19,7 @@
 #define CONST_STRLEN(str)	(sizeof(str) - 1)
 
 /* Encryption parameters */
+#define FS_AES_256_XTS_KEY_SIZE		64
 #define FS_KEY_DERIVATION_NONCE_SIZE	16
 
 #define FSCRYPT_MIN_KEY_SIZE		16
@@ -224,6 +225,9 @@ struct fscrypt_info {
 
 	/* This inode's nonce, copied from the fscrypt_context */
 	u8 ci_nonce[FS_KEY_DERIVATION_NONCE_SIZE];
+
+	/* Raw key, only for inline encryption w/ FSCRYPT_MODE_PRIVATE */
+	u8 ci_raw_key[FS_AES_256_XTS_KEY_SIZE];
 
 	/* Hashed inode number.  Only set for IV_INO_LBLK_32 */
 	u32 ci_hashed_ino;
@@ -464,6 +468,12 @@ struct fscrypt_mode {
 	int ivsize;
 	int logged_impl_name;
 };
+
+static inline bool is_private_mode(const struct fscrypt_mode *mode)
+{
+	/* Using inline encryption with ICE, rather than the crypto API? */
+	return mode->cipher_str == NULL;
+}
 
 extern struct fscrypt_mode fscrypt_modes[];
 
