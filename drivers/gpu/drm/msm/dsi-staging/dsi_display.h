@@ -718,4 +718,6 @@ struct dsi_display *get_main_display(void);
 
 void dsi_display_set_fod_ui(struct dsi_display *display, bool status);
 
+char *dsi_display_get_cmdline_panel_info(void);
+
 #endif /* _DSI_DISPLAY_H_ */

@@ -18,9 +18,12 @@
 #include <linux/err.h>
 #include <linux/export.h>
 
+#include <drm/drm_encoder.h>
 #include <drm/drm_sysfs.h>
 #include <drm/drmP.h>
 #include "drm_internal.h"
+
+#include "drm_internal_mi.h"
 
 #define to_drm_minor(d) dev_get_drvdata(d)
 #define to_drm_connector(d) dev_get_drvdata(d)
@@ -229,16 +232,26 @@ static ssize_t modes_show(struct device *device,
 	return written;
 }
 
+static ssize_t panel_info_show(struct device *device,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	struct drm_connector *connector = to_drm_connector(device);
+	return dsi_display_read_panel_info(connector, buf);
+}
+
 static DEVICE_ATTR_RW(status);
 static DEVICE_ATTR_RO(enabled);
 static DEVICE_ATTR_RO(dpms);
 static DEVICE_ATTR_RO(modes);
+static DEVICE_ATTR_RO(panel_info);
 
 static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_status.attr,
 	&dev_attr_enabled.attr,
 	&dev_attr_dpms.attr,
 	&dev_attr_modes.attr,
+	&dev_attr_panel_info.attr,
 	NULL
 };
 
