@@ -73,6 +73,9 @@ struct msm_gem_vma;
 
 #define TEARDOWN_DEADLOCK_RETRY_MAX 5
 
+extern atomic_t resume_pending;
+extern wait_queue_head_t resume_wait_q;
+
 struct msm_file_private {
 	/* update the refcount when user driver calls power_ctrl IOCTL */
 	unsigned short enable_refcnt;
@@ -103,6 +106,7 @@ enum msm_mdp_plane_property {
 
 	/* range properties */
 	PLANE_PROP_ZPOS = PLANE_PROP_BLOBCOUNT,
+	PLANE_PROP_FOD,
 	PLANE_PROP_ALPHA,
 	PLANE_PROP_COLOR_FILL,
 	PLANE_PROP_H_DECIMATE,
