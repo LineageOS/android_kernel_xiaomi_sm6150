@@ -265,8 +265,13 @@ static void cp_configure_ilim(struct pl_data *chip, const char *voter, int ilim)
 	if (!chip->cp_ilim_votable)
 		chip->cp_ilim_votable = find_votable("CP_ILIM");
 
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
 	if (chip->cp_ilim_votable) {
 		fcc = get_effective_result_locked(chip->fcc_votable);
+#else
+	if (chip->cp_ilim_votable)
+		vote(chip->cp_ilim_votable, voter, true, ilim);
+#endif
 		/*
 		 * If FCC >= (2 * MIN_ICL) then it is safe to enable CP
 		 * with MIN_ICL.
@@ -1327,6 +1332,21 @@ static void pl_disable_forever_work(struct work_struct *work)
 		vote(chip->hvdcp_hw_inov_dis_votable, PL_VOTER, false, 0);
 }
 
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+static void pl_awake_work(struct work_struct *work)
+{
+	struct pl_data *chip = container_of(work,
+			struct pl_data, pl_awake_work.work);
+
+	vote(chip->pl_awake_votable, PL_VOTER, false, 0);
+}
+
+#define CP_ILIM_COMP			200000
+#define CP_COOL_THRESHOLD		150
+#define CP_WARM_THRESHOLD		450
+#define SOFT_JEITA_HYSTERESIS	5
+#endif
+
 static int pl_disable_vote_callback(struct votable *votable,
 		void *data, int pl_disable, const char *client)
 {
@@ -1334,6 +1354,9 @@ static int pl_disable_vote_callback(struct votable *votable,
 	union power_supply_propval pval = {0, };
 	int master_fcc_ua = 0, total_fcc_ua = 0, slave_fcc_ua = 0;
 	int rc = 0, cp_ilim;
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	int batt_temp;
+#endif
 	bool disable = false;
 
 	if (!is_main_available(chip))
@@ -1515,6 +1538,23 @@ static int pl_disable_vote_callback(struct votable *votable,
 								total_fcc_ua);
 			cp_ilim = total_fcc_ua - get_effective_result_locked(
 							chip->fcc_main_votable);
+
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+			if (cp_get_parallel_mode(chip, PARALLEL_OUTPUT_MODE)
+					== POWER_SUPPLY_PL_OUTPUT_VBAT) {
+				rc = power_supply_get_property(chip->batt_psy,
+						POWER_SUPPLY_PROP_TEMP, &pval);
+				if (rc < 0) {
+					pr_err("Couldn't read batt temp, rc=%d\n", rc);
+				}
+				batt_temp = pval.intval;
+				/* if temp in cp soft jeita zone(15 to 45 degree), add comp */
+				if ((batt_temp < CP_WARM_THRESHOLD - SOFT_JEITA_HYSTERESIS)
+						&& (batt_temp > CP_COOL_THRESHOLD + SOFT_JEITA_HYSTERESIS))
+					cp_ilim += CP_ILIM_COMP;
+			}
+#endif
+
 			if (cp_ilim > 0)
 				cp_configure_ilim(chip, FCC_VOTER, cp_ilim / 2);
 
