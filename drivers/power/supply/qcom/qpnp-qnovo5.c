@@ -135,7 +135,11 @@ struct qnovo {
 	int			usb_present;
 };
 
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+static int debug_mask = QG_DEBUG_STATUS | QG_DEBUG_IRQ;
+#else
 static int debug_mask;
+#endif
 module_param_named(debug_mask, debug_mask, int, 0600);
 
 #define qnovo_dbg(chip, reason, fmt, ...)				\
