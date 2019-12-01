@@ -164,6 +164,11 @@ static ssize_t power_supply_show_property(struct device *dev,
 
 	if (off == POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT)
 		return sprintf(buf, "%lld\n", value.int64val);
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	else if (off == POWER_SUPPLY_PROP_TYPE_RECHECK)
+		return scnprintf(buf, PAGE_SIZE, "0x%x\n",
+				value.intval);
+#endif
 	else
 		return sprintf(buf, "%d\n", value.intval);
 }
@@ -295,6 +300,10 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charge_enabled),
 	POWER_SUPPLY_ATTR(set_ship_mode),
 	POWER_SUPPLY_ATTR(real_type),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(hvdcp3_type),
+	POWER_SUPPLY_ATTR(quick_charge_type),
+#endif
 	POWER_SUPPLY_ATTR(charge_now_raw),
 	POWER_SUPPLY_ATTR(charge_now_error),
 	POWER_SUPPLY_ATTR(capacity_raw),
@@ -333,6 +342,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(flash_trigger),
 	POWER_SUPPLY_ATTR(force_tlim),
 	POWER_SUPPLY_ATTR(dp_dm),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(dp_dm_bq),
+#endif
 	POWER_SUPPLY_ATTR(input_current_limited),
 	POWER_SUPPLY_ATTR(input_current_now),
 	POWER_SUPPLY_ATTR(charge_qnovo_enable),
@@ -349,6 +361,10 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(typec_src_rp),
 	POWER_SUPPLY_ATTR(pd_allowed),
 	POWER_SUPPLY_ATTR(pd_active),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(pd_authentication),
+	POWER_SUPPLY_ATTR(pd_remove_compensation),
+#endif
 	POWER_SUPPLY_ATTR(pd_in_hard_reset),
 	POWER_SUPPLY_ATTR(pd_current_max),
 	POWER_SUPPLY_ATTR(pd_usb_suspend_supported),
@@ -363,12 +379,19 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(parallel_mode),
 	POWER_SUPPLY_ATTR(die_health),
 	POWER_SUPPLY_ATTR(connector_health),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(connector_temp),
+	POWER_SUPPLY_ATTR(vbus_disable),
+#endif
 	POWER_SUPPLY_ATTR(ctm_current_max),
 	POWER_SUPPLY_ATTR(hw_current_max),
 	POWER_SUPPLY_ATTR(pr_swap),
 	POWER_SUPPLY_ATTR(cc_step),
 	POWER_SUPPLY_ATTR(cc_step_sel),
 	POWER_SUPPLY_ATTR(sw_jeita_enabled),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(dynamic_fv_enabled),
+#endif
 	POWER_SUPPLY_ATTR(pd_voltage_max),
 	POWER_SUPPLY_ATTR(pd_voltage_min),
 	POWER_SUPPLY_ATTR(sdp_current_max),
@@ -379,8 +402,16 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(moisture_detected),
 	POWER_SUPPLY_ATTR(batt_profile_version),
 	POWER_SUPPLY_ATTR(batt_full_current),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(battery_charging_limited),
+	POWER_SUPPLY_ATTR(slowly_charging),
+	POWER_SUPPLY_ATTR(bq_input_suspend),
+#endif
 	POWER_SUPPLY_ATTR(recharge_soc),
 	POWER_SUPPLY_ATTR(hvdcp_opti_allowed),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(fastcharge_mode),
+#endif
 	POWER_SUPPLY_ATTR(smb_en_mode),
 	POWER_SUPPLY_ATTR(smb_en_reason),
 	POWER_SUPPLY_ATTR(esr_actual),
@@ -398,6 +429,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(voltage_vph),
 	POWER_SUPPLY_ATTR(chip_version),
 	POWER_SUPPLY_ATTR(therm_icl_limit),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(type_recheck),
+#endif
 	POWER_SUPPLY_ATTR(dc_reset),
 	POWER_SUPPLY_ATTR(scale_mode_en),
 	POWER_SUPPLY_ATTR(voltage_max_limit),
@@ -421,8 +455,27 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(cp_toggle_switcher),
 	POWER_SUPPLY_ATTR(cp_irq_status),
 	POWER_SUPPLY_ATTR(cp_ilim),
+	/* Bq charge pump properties */
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(ti_battery_present),
+	POWER_SUPPLY_ATTR(ti_vbus_present),
+	POWER_SUPPLY_ATTR(ti_battery_voltage),
+	POWER_SUPPLY_ATTR(ti_battery_current),
+	POWER_SUPPLY_ATTR(ti_battery_temperature),
+	POWER_SUPPLY_ATTR(ti_bus_voltage),
+	POWER_SUPPLY_ATTR(ti_bus_current),
+	POWER_SUPPLY_ATTR(ti_bus_temperature),
+	POWER_SUPPLY_ATTR(ti_die_temperature),
+	POWER_SUPPLY_ATTR(ti_alarm_status),
+	POWER_SUPPLY_ATTR(ti_fault_status),
+	POWER_SUPPLY_ATTR(ti_reg_status),
+	POWER_SUPPLY_ATTR(ti_set_bus_protection_for_qc3),
+#endif
 	POWER_SUPPLY_ATTR(irq_status),
 	POWER_SUPPLY_ATTR(parallel_output_mode),
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	POWER_SUPPLY_ATTR(ffc_chg_term_current),
+#endif
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
