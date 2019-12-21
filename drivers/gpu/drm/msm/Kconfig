@@ -198,3 +198,11 @@ config DRM_SDE_RSC
 	  avoids the display core power collapse. A client can also register
 	  for display core power collapse events on rsc.
 
+config DRM_SDE_EXPO
+	bool "Enable sde exposure dim layer driver"
+	depends on DRM_MSM
+	help
+	  The SDE DRM exposure dim layer provides exposure adjustment
+	  function without change panel hardware brightness to avoid PWM
+	  flicker on OLED devices.
+
