@@ -187,6 +187,8 @@ msm_drm-$(CONFIG_DRM_MSM) += \
 	sde/sde_hw_ds.o \
 	sde/sde_hw_qdss.o
 
+msm_drm-$(CONFIG_DRM_SDE_EXPO) += sde/sde_expo_dim_layer.o
+
 msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 	sde/sde_encoder_phys_wb.o
 
