@@ -168,6 +168,9 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_CAPTURE_OUTPUT,
 
 	CRTC_PROP_IDLE_PC_STATE,
+#ifdef CONFIG_DRM_SDE_EXPO
+	CRTC_PROP_DIM_LAYER_EXPO,
+#endif
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
