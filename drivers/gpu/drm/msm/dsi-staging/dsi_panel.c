@@ -34,6 +34,10 @@
 
 #include <drm/drm_notifier.h>
 
+#ifdef CONFIG_DRM_SDE_EXPO
+#include "sde_expo_dim_layer.h"
+#endif
+
 #define DSI_READ_WRITE_PANEL_DEBUG 1
 #if DSI_READ_WRITE_PANEL_DEBUG
 #include <linux/proc_fs.h>
@@ -721,6 +725,10 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	u32 bl_temp = 0;
 	struct mipi_dsi_device *dsi;
 
+#ifdef CONFIG_DRM_SDE_EXPO
+	bl_lvl = expo_calc_backlight(bl_lvl);
+#endif
+
 	if (!panel || (bl_lvl > 0xffff)) {
 		pr_err("invalid params\n");
 		return -EINVAL;
@@ -819,11 +827,15 @@ int dsi_panel_set_doze_backlight(struct dsi_display *display, u32 bl_lvl)
 	panel = display->panel;
 	drm_dev = display->drm_dev;
 
+#ifdef CONFIG_DRM_SDE_EXPO
+	bl_lvl = expo_calc_backlight(bl_lvl);
+#else
 	if (panel->fod_hbm_enabled || panel->fod_dimlayer_hbm_enabled) {
 		pr_info("%s FOD HBM open, skip value:%u [hbm=%d][dimlayer_fod=%d][fod_bl=%d]\n", __func__,
 			bl_lvl, panel->fod_hbm_enabled, panel->fod_dimlayer_hbm_enabled, panel->fod_backlight_flag);
 		return rc;
 	}
+#endif
 
 	if (bl_lvl > panel->doze_backlight_threshold) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
@@ -863,6 +875,10 @@ int dsi_panel_enable_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		else if (panel->bl_config.dcs_type_ss_ea)
 			rc = dsi_panel_update_backlight(panel, bl_lvl);
 	}
+
+#ifdef CONFIG_DRM_SDE_EXPO
+	bl_lvl = expo_calc_backlight(bl_lvl);
+#endif
 
 	panel->last_bl_lvl = bl_lvl;
 
