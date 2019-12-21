@@ -33,6 +33,10 @@
 #include "sde_dbg.h"
 #include "dsi_parser.h"
 
+#ifdef CONFIG_DRM_SDE_EXPO
+#include "sde_expo_dim_layer.h"
+#endif
+
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
 #define NO_OVERRIDE -1
