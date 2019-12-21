@@ -432,6 +432,9 @@ struct sde_crtc_state {
 	u32 sbuf_prefill_line;
 	u64 sbuf_clk_rate[2];
 	bool sbuf_clk_shifted;
+#ifdef CONFIG_DRM_SDE_EXPO
+	struct sde_hw_dim_layer *exposure_dim_layer;
+#endif
 
 	u32 padding_height;
 	u32 padding_active;
