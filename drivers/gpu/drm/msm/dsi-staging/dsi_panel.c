@@ -34,6 +34,10 @@
 
 #include <drm/drm_notifier.h>
 
+#ifdef CONFIG_DRM_SDE_EXPO
+#include "sde_expo_dim_layer.h"
+#endif
+
 #define DSI_READ_WRITE_PANEL_DEBUG 1
 #if DSI_READ_WRITE_PANEL_DEBUG
 #include <linux/proc_fs.h>
@@ -864,6 +868,10 @@ int dsi_panel_enable_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 			rc = dsi_panel_update_backlight(panel, bl_lvl);
 	}
 
+#ifdef CONFIG_DRM_SDE_EXPO
+	bl_lvl = expo_calc_backlight(bl_lvl);
+#endif
+
 	panel->last_bl_lvl = bl_lvl;
 
 	return rc;
@@ -877,6 +885,10 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 
 	if (panel->host_config.ext_bridge_num)
 		return 0;
+
+#ifdef CONFIG_DRM_SDE_EXPO
+	bl_lvl = expo_calc_backlight(bl_lvl);
+#endif
 
 	pr_debug("backlight type:%d lvl:%d\n", bl->type, bl_lvl);
 
