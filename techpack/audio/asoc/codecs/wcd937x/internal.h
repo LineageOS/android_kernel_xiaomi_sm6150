@@ -90,6 +90,9 @@ struct wcd937x_priv {
 	/* Entry for version info */
 	struct snd_info_entry *entry;
 	struct snd_info_entry *version_entry;
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	int ear_rx_path;
+#endif
 	int ana_clk_count;
 	struct mutex ana_tx_clk_lock;
 };
