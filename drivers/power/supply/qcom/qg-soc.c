@@ -463,7 +463,7 @@ static bool maint_soc_timeout(struct qpnp_qg *chip)
 static void update_msoc(struct qpnp_qg *chip)
 {
 #ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
-	int rc = 0, sdam_soc, batt_temp = 0, batt_cur = 0, batt_soc_32bit = 0;
+	int rc = 0, sdam_soc, batt_temp = 0, batt_cur = 0;
 #else
 	int rc = 0, sdam_soc, batt_temp = 0;
 #endif

@@ -1515,9 +1515,6 @@ static int smb1390_get_prop(struct power_supply *psy,
 								"SMB1390_V2";
 #endif
 		break;
-	case POWER_SUPPLY_PROP_PARALLEL_MODE:
-		val->intval = chip->pl_input_mode;
-		break;
 	default:
 		smb1390_dbg(chip, PR_MISC, "charge pump power supply get prop %d not supported\n",
 			prop);
