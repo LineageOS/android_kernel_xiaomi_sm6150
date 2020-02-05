@@ -9716,6 +9716,9 @@ int smblib_init(struct smb_charger *chg)
 
 		chg->bms_psy = power_supply_get_by_name("bms");
 
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+		chg->batt_verify_psy = power_supply_get_by_name("batt_verify");
+#endif
 		if (chg->sec_pl_present) {
 			chg->pl.psy = power_supply_get_by_name("parallel");
 			if (chg->pl.psy) {
