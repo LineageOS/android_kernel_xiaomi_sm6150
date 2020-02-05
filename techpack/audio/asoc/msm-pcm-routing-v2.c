@@ -80,6 +80,8 @@ static int msm_ec_ref_bit_format = SNDRV_PCM_FORMAT_S16_LE;
 static int msm_ec_ref_sampling_rate = 48000;
 static uint32_t voc_session_id = ALL_SESSION_VSID;
 static int msm_route_ext_ec_ref;
+static int wakeup_ext_ec_ref = 0;
+static int voip_ext_ec_common_ref = 0;
 static bool is_custom_stereo_on;
 static bool is_ds2_on;
 static bool swap_ch;
@@ -936,7 +938,7 @@ int msm_pcm_routing_reg_stream_app_type_cfg(
 		goto done;
 	}
 
-	pr_debug("%s: fedai_id %d, session_type %d, be_id %d, app_type %d, acdb_dev_id %d, sample_rate %d\n",
+	pr_err("%s: fedai_id %d, session_type %d, be_id %d, app_type %d, acdb_dev_id %d, sample_rate %d\n",
 		__func__, fedai_id, session_type, be_id,
 		cfg_data->app_type, cfg_data->acdb_dev_id,
 		cfg_data->sample_rate);
@@ -3811,9 +3813,16 @@ static const struct snd_kcontrol_new ec_ref_param_controls[] = {
 static int msm_routing_ec_ref_rx_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s: ec_ref_rx  = %d", __func__, msm_route_ec_ref_rx);
+	struct snd_soc_dapm_widget *widget =
+		snd_soc_dapm_kcontrol_widget(kcontrol);
+
+	pr_debug("%s: wakeup_ext_ec_ref  = %d, voip_ext_ec_common_ref = %d",
+			__func__, wakeup_ext_ec_ref, voip_ext_ec_common_ref);
 	mutex_lock(&routing_lock);
-	ucontrol->value.integer.value[0] = msm_route_ec_ref_rx;
+	if (!strncmp(widget->name, "AUDIO_REF_EC_UL10 MUX", strlen("AUDIO_REF_EC_UL10 MUX")))
+		ucontrol->value.integer.value[0] = voip_ext_ec_common_ref;
+	else
+		ucontrol->value.integer.value[0] = wakeup_ext_ec_ref;
 	mutex_unlock(&routing_lock);
 	return 0;
 }
@@ -3826,13 +3835,14 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 		snd_soc_dapm_kcontrol_widget(kcontrol);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	struct snd_soc_dapm_update *update = NULL;
-
+	bool state = true;
 
 	mutex_lock(&routing_lock);
 	switch (ucontrol->value.integer.value[0]) {
 	case 0:
 		msm_route_ec_ref_rx = 0;
 		ec_ref_port_id = AFE_PORT_INVALID;
+		state = false;
 		break;
 	case 1:
 		msm_route_ec_ref_rx = 1;
@@ -3979,14 +3989,29 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 		pr_err("%s EC ref rx %ld not valid\n",
 			__func__, ucontrol->value.integer.value[0]);
 		ec_ref_port_id = AFE_PORT_INVALID;
+		state = false;
 		break;
 	}
-	adm_ec_ref_rx_id(ec_ref_port_id);
+
 	pr_debug("%s: msm_route_ec_ref_rx = %d\n",
-	    __func__, msm_route_ec_ref_rx);
-	mutex_unlock(&routing_lock);
-	snd_soc_dapm_mux_update_power(widget->dapm, kcontrol,
+			__func__, msm_route_ec_ref_rx);
+
+	if (!strncmp(widget->name, "AUDIO_REF_EC_UL10 MUX", strlen("AUDIO_REF_EC_UL10 MUX")))
+		voip_ext_ec_common_ref = msm_route_ec_ref_rx;
+	else
+		wakeup_ext_ec_ref = msm_route_ec_ref_rx;
+	pr_debug("%s: state %d, wakeup_ext_ec_ref %d, voip_ext_ec_common_ref %d\n", __func__,
+			state, wakeup_ext_ec_ref, voip_ext_ec_common_ref);
+
+	if (state || (!state && wakeup_ext_ec_ref == 0 && voip_ext_ec_common_ref == 0)) {
+		pr_info("%s: update state!\n", __func__);
+		adm_ec_ref_rx_id(ec_ref_port_id);
+		mutex_unlock(&routing_lock);
+		snd_soc_dapm_mux_update_power(widget->dapm, kcontrol,
 					msm_route_ec_ref_rx, e, update);
+	} else {
+		mutex_unlock(&routing_lock);
+	}
 	return 0;
 }
 
@@ -16888,7 +16913,12 @@ static const struct snd_kcontrol_new cdc_dma_wsa_switch_mixer_controls =
 	0, 1, 0, msm_routing_get_switch_mixer,
 	msm_routing_put_switch_mixer);
 
-static const struct snd_kcontrol_new cdc_dma_rx_switch_mixer_controls =
+static const struct snd_kcontrol_new cdc_dma_rx0_switch_mixer_controls =
+	SOC_SINGLE_EXT("Switch", SND_SOC_NOPM,
+	0, 1, 0, msm_routing_get_switch_mixer,
+	msm_routing_put_switch_mixer);
+
+static const struct snd_kcontrol_new cdc_dma_rx1_switch_mixer_controls =
 	SOC_SINGLE_EXT("Switch", SND_SOC_NOPM,
 	0, 1, 0, msm_routing_get_switch_mixer,
 	msm_routing_put_switch_mixer);
@@ -19050,7 +19080,9 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_SWITCH("WSA_CDC_DMA_RX_0_DL_HL", SND_SOC_NOPM, 0, 0,
 				&cdc_dma_wsa_switch_mixer_controls),
 	SND_SOC_DAPM_SWITCH("RX_CDC_DMA_RX_0_DL_HL", SND_SOC_NOPM, 0, 0,
-				&cdc_dma_rx_switch_mixer_controls),
+				&cdc_dma_rx0_switch_mixer_controls),
+	SND_SOC_DAPM_SWITCH("RX_CDC_DMA_RX_1_DL_HL", SND_SOC_NOPM, 0, 0,
+				&cdc_dma_rx1_switch_mixer_controls),
 
 	/* Mixer definitions */
 	SND_SOC_DAPM_MIXER("PRI_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
@@ -21946,6 +21978,8 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"CDC_DMA_UL_HL", NULL, "VA_CDC_DMA_TX_0"},
 	{"RX_CDC_DMA_RX_0_DL_HL", "Switch", "CDC_DMA_DL_HL"},
 	{"RX_CDC_DMA_RX_0", NULL, "RX_CDC_DMA_RX_0_DL_HL"},
+	{"RX_CDC_DMA_RX_1_DL_HL", "Switch", "CDC_DMA_DL_HL"},
+	{"RX_CDC_DMA_RX_1", NULL, "RX_CDC_DMA_RX_1_DL_HL"},
 	{"TX3_CDC_DMA_UL_HL", NULL, "TX_CDC_DMA_TX_3"},
 	{"LSM1 Mixer", "SLIMBUS_0_TX", "SLIMBUS_0_TX"},
 	{"LSM1 Mixer", "SLIMBUS_1_TX", "SLIMBUS_1_TX"},
@@ -22102,7 +22136,7 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"INT0_MI2S_RX", NULL, "INT0_MI2S_RX_DL_HL"},
 	{"INT4_MI2S_RX_DL_HL", "Switch", "INT4_MI2S_DL_HL"},
 	{"INT4_MI2S_RX", NULL, "INT4_MI2S_RX_DL_HL"},
-	{"PRI_MI2S_RX_DL_HL", "Switch", "PRI_MI2S_DL_HL"},
+	{"PRI_MI2S_RX_DL_HL", "Switch", "CDC_DMA_DL_HL"},
 	{"PRI_MI2S_RX", NULL, "PRI_MI2S_RX_DL_HL"},
 	{"SEC_MI2S_RX_DL_HL", "Switch", "SEC_MI2S_DL_HL"},
 	{"SEC_MI2S_RX", NULL, "SEC_MI2S_RX_DL_HL"},
@@ -23884,6 +23918,7 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 			port_multi_channel_map_mixer_controls,
 			ARRAY_SIZE(port_multi_channel_map_mixer_controls));
 
+	elliptic_add_platform_controls(platform);
 	return 0;
 }
 
