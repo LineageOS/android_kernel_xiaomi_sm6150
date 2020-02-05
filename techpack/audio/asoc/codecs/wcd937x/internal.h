@@ -90,6 +90,9 @@ struct wcd937x_priv {
 	/* Entry for version info */
 	struct snd_info_entry *entry;
 	struct snd_info_entry *version_entry;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	int ear_rx_path;
+#endif
 	int ana_clk_count;
 	struct mutex ana_tx_clk_lock;
 };
