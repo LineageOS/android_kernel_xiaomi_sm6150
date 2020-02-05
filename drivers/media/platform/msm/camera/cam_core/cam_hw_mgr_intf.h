@@ -36,6 +36,12 @@ typedef int (*cam_hw_event_cb_func)(void *context, uint32_t evt_id,
 typedef int (*cam_hw_pagefault_cb_func)(void *context, unsigned long iova,
 	uint32_t buf_info);
 
+#define DMI_BL 1
+#define CMD_BL 2
+#define IOCFG_BL 3
+#define CHNG_BASE_BL 4
+#define REG_UPD_BL 5
+
 /**
  * struct cam_hw_update_entry - Entry for hardware config
  *

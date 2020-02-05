@@ -70,8 +70,12 @@ int cam_isp_add_change_base(
 			hw_entry[num_ent].handle = kmd_buf_info->handle;
 			hw_entry[num_ent].len    = get_base.cmd.used_bytes;
 			hw_entry[num_ent].offset = kmd_buf_info->offset;
+#ifndef CONFIG_MACH_XIAOMI_SDMMAGPIE
 			/* Marking change base as IOCFG to reapply on bubble */
 			hw_entry[num_ent].flags  = CAM_ISP_IOCFG_BL;
+#else
+			hw_entry[num_ent].flags  = CHNG_BASE_BL;
+#endif
 			CAM_DBG(CAM_ISP,
 				"num_ent=%d handle=0x%x, len=%u, offset=%u",
 				num_ent,
@@ -316,7 +320,15 @@ int cam_isp_add_command_buffers(
 					hw_entry[num_ent].handle,
 					hw_entry[num_ent].len,
 					hw_entry[num_ent].offset);
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+				if (cmd_meta_data ==
+					CAM_ISP_PACKET_META_DMI_LEFT)
+					hw_entry[num_ent].flags = DMI_BL;
+				else
+					hw_entry[num_ent].flags = CMD_BL;
+#else
 				hw_entry[num_ent].flags = CAM_ISP_IQ_BL;
+#endif
 
 				num_ent++;
 			}
@@ -335,7 +347,15 @@ int cam_isp_add_command_buffers(
 					hw_entry[num_ent].len,
 					hw_entry[num_ent].offset);
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+				if (cmd_meta_data ==
+					CAM_ISP_PACKET_META_DMI_RIGHT)
+					hw_entry[num_ent].flags = DMI_BL;
+				else
+					hw_entry[num_ent].flags = CMD_BL;
+#else
 				hw_entry[num_ent].flags = CAM_ISP_IQ_BL;
+#endif
 				num_ent++;
 			}
 			break;
@@ -351,7 +371,14 @@ int cam_isp_add_command_buffers(
 				hw_entry[num_ent].handle,
 				hw_entry[num_ent].len,
 				hw_entry[num_ent].offset);
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+			if (cmd_meta_data == CAM_ISP_PACKET_META_DMI_COMMON)
+				hw_entry[num_ent].flags = DMI_BL;
+			else
+				hw_entry[num_ent].flags = CMD_BL;
+#else
 			hw_entry[num_ent].flags = CAM_ISP_IQ_BL;
+#endif
 
 			num_ent++;
 			break;
@@ -382,7 +409,11 @@ int cam_isp_add_command_buffers(
 						rc);
 					return rc;
 				}
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+				hw_entry[num_ent].flags = CMD_BL;
+#else
 				hw_entry[num_ent].flags = CAM_ISP_IQ_BL;
+#endif
 				num_ent = prepare->num_hw_update_entries;
 			}
 			break;
@@ -405,7 +436,11 @@ int cam_isp_add_command_buffers(
 						rc);
 					return rc;
 				}
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+				hw_entry[num_ent].flags = CMD_BL;
+#else
 				hw_entry[num_ent].flags = CAM_ISP_IQ_BL;
+#endif
 				num_ent = prepare->num_hw_update_entries;
 			}
 			break;
@@ -426,7 +461,11 @@ int cam_isp_add_command_buffers(
 					"Failed in processing blobs %d", rc);
 				return rc;
 			}
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+			hw_entry[num_ent].flags = CMD_BL;
+#else
 			hw_entry[num_ent].flags = CAM_ISP_IQ_BL;
+#endif
 			num_ent = prepare->num_hw_update_entries;
 		}
 			break;
@@ -838,7 +877,11 @@ int cam_isp_add_io_buffers(
 		prepare->hw_update_entries[num_ent].len = io_cfg_used_bytes;
 		prepare->hw_update_entries[num_ent].offset =
 			kmd_buf_info->offset;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		prepare->hw_update_entries[num_ent].flags = IOCFG_BL;
+#else
 		prepare->hw_update_entries[num_ent].flags = CAM_ISP_IOCFG_BL;
+#endif
 
 		CAM_DBG(CAM_ISP,
 			"num_ent=%d handle=0x%x, len=%u, offset=%u",
@@ -946,8 +989,12 @@ int cam_isp_add_reg_update(
 		prepare->hw_update_entries[num_ent].len = reg_update_size;
 		prepare->hw_update_entries[num_ent].offset =
 			kmd_buf_info->offset;
+#ifndef CONFIG_MACH_XIAOMI_SDMMAGPIE
 		/* Marking reg update as IOCFG to reapply on bubble */
 		prepare->hw_update_entries[num_ent].flags = CAM_ISP_IOCFG_BL;
+#else
+		prepare->hw_update_entries[num_ent].flags = REG_UPD_BL;
+#endif
 
 		CAM_DBG(CAM_ISP,
 			"num_ent=%d handle=0x%x, len=%u, offset=%u",

@@ -336,6 +336,9 @@ static int32_t cam_sensor_driver_platform_probe(
 
 	s_ctrl->sensordata->power_info.dev = &pdev->dev;
 	platform_set_drvdata(pdev, s_ctrl);
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	v4l2_set_subdevdata(&(s_ctrl->v4l2_dev_str.sd), s_ctrl);
+#endif
 	s_ctrl->sensor_state = CAM_SENSOR_INIT;
 
 	return rc;

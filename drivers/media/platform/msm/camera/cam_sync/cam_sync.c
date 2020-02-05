@@ -52,12 +52,28 @@ int cam_sync_create(int32_t *sync_obj, const char *name)
 	do {
 		idx = find_first_zero_bit(sync_dev->bitmap, CAM_SYNC_MAX_OBJS);
 		if (idx >= CAM_SYNC_MAX_OBJS) {
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+			long i;
+			CAM_ERR(CAM_SYNC, "Error: no sync obj available, dump all sync obj ===>");
+
+			for (i = 1; i < CAM_SYNC_MAX_OBJS; i++) {
+				spin_lock_bh(&sync_dev->row_spinlocks[i]);
+				if (test_bit(i, sync_dev->bitmap)) {
+					struct sync_table_row *row;
+					row = sync_dev->sync_table + i;
+					CAM_ERR(CAM_SYNC, "row[%d] name=%s,stat=%d,ref=%d", i,
+						row->name, row->state, atomic_read(&row->ref_cnt));
+				}
+				spin_unlock_bh(&sync_dev->row_spinlocks[i]);
+			}
+#else
 			CAM_ERR(CAM_SYNC,
 				"Error: Unable to Create Sync Idx = %d Reached Max!!",
 				idx);
 			sync_dev->err_cnt++;
 			if (sync_dev->err_cnt == 1)
 				cam_sync_print_fence_table();
+#endif
 			return -ENOMEM;
 		}
 		CAM_DBG(CAM_SYNC, "Index location available at idx: %ld", idx);

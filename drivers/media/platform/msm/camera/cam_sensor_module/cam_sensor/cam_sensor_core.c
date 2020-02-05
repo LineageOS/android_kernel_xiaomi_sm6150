@@ -646,6 +646,9 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 	return rc;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+static uint32_t g_operation_mode;
+#endif
 int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	void *arg)
 {
@@ -773,6 +776,10 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 			goto release_mutex;
 		}
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		g_operation_mode = sensor_acq_dev.operation_mode;
+		CAM_DBG(CAM_SENSOR, "operation mode :%d", g_operation_mode);
+#endif
 		bridge_params.session_hdl = sensor_acq_dev.session_handle;
 		bridge_params.ops = &s_ctrl->bridge_intf.ops;
 		bridge_params.v4l2_sub_dev_flag = 0;
@@ -1035,6 +1042,16 @@ int cam_sensor_publish_dev_info(struct cam_req_mgr_device_info *info)
 		info->p_delay = 2;
 	info->trigger = CAM_TRIGGER_POINT_SOF;
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	if (g_operation_mode == 0x8006)
+		info->p_delay = 0;
+
+    if (g_operation_mode == 0x8002)
+    {
+        CAM_INFO(CAM_SENSOR, "set pipeline delay for bokeh");
+        info->p_delay = 1;
+    }
+#endif
 	return rc;
 }
 

@@ -42,7 +42,25 @@
 /*
  * Maximum entries in state monitoring array for error logging
  */
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   40
+#else
 #define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   20
+#endif
+/*
+ * Response time in ms threshold beyond which a request is not expected
+ * to be with IFE hw
+ */
+#define CAM_ISP_CTX_RESPONSE_TIME_THRESHOLD   100000
+
+/* Min length for dumping isp context */
+#define CAM_ISP_CTX_DUMP_MIN_LENGTH   2048
+
+/* Maximum entries in event record */
+#define CAM_ISP_CTX_EVENT_RECORD_MAX_ENTRIES   20
+
+/* Maximum length of tag while dumping */
+#define CAM_ISP_CONTEXT_DUMP_TAG_MAX_LEN 32
 
 /*
  * Response time in ms threshold beyond which a request is not expected
@@ -239,6 +257,8 @@ struct cam_isp_context_event_record {
  * @fps:                       Current FPS for the activated state.
  * @bubble_frame_cnt:          Count number of frames since the req is in
  *                             bubble
+ * @init_timestamp:            Timestamp at which this context is initialized
+ *
  */
 struct cam_isp_context {
 	struct cam_context              *base;
@@ -273,6 +293,7 @@ struct cam_isp_context {
 	uint64_t                         irq_timestamps;
 	uint32_t                         fps;
 	uint32_t                         bubble_frame_cnt;
+	unsigned int                     init_timestamp;
 };
 
 /**

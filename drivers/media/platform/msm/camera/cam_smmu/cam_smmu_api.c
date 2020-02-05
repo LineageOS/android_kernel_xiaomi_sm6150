@@ -1753,6 +1753,9 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 		}
 	} else if (region_id == CAM_SMMU_REGION_IO) {
 		attach->dma_map_attrs |= DMA_ATTR_DELAYED_UNMAP;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		attach->dma_map_attrs |= DMA_ATTR_NO_DELAYED_UNMAP;
+#endif
 
 		table = dma_buf_map_attachment(attach, dma_dir);
 		if (IS_ERR_OR_NULL(table)) {
@@ -1937,6 +1940,9 @@ static int cam_smmu_unmap_buf_and_remove_from_list(
 
 	} else if (mapping_info->region_id == CAM_SMMU_REGION_IO) {
 		mapping_info->attach->dma_map_attrs |= DMA_ATTR_DELAYED_UNMAP;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		mapping_info->attach->dma_map_attrs |= DMA_ATTR_NO_DELAYED_UNMAP;
+#endif
 	}
 
 	dma_buf_unmap_attachment(mapping_info->attach,
@@ -3197,6 +3203,9 @@ static int cam_smmu_setup_cb(struct cam_context_bank_info *cb,
 	struct device *dev)
 {
 	int rc = 0;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	int32_t stall_disable = 1;
+#endif
 
 	if (!cb || !dev) {
 		CAM_ERR(CAM_SMMU, "Error: invalid input params");
@@ -3263,6 +3272,14 @@ static int cam_smmu_setup_cb(struct cam_context_bank_info *cb,
 			CAM_ERR(CAM_SMMU,
 				"Error: failed to set non fatal fault attribute");
 		}
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		if (iommu_domain_set_attr(cb->mapping->domain,
+			DOMAIN_ATTR_CB_STALL_DISABLE,
+			&stall_disable) < 0) {
+			CAM_ERR(CAM_SMMU,
+				"Error: failed to set cb stall disable");
+		}
+#endif
 
 	} else {
 		CAM_ERR(CAM_SMMU, "Context bank does not have IO region");

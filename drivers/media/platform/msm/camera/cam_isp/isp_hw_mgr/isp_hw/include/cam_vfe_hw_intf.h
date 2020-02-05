@@ -256,6 +256,9 @@ struct cam_vfe_top_irq_evt_payload {
 	uint32_t                   error_type;
 	bool                       enable_reg_dump;
 	struct cam_isp_timestamp   ts;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	uint64_t                   boot_time;
+#endif
 };
 
 /*

@@ -2557,6 +2557,13 @@ static int cam_ife_mgr_config_hw(void *hw_mgr_priv,
 			CAM_DBG(CAM_ISP, "reapply:%d cmd flags:%d",
 				cfg->reapply, cmd->flags);
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+			if (cfg->reapply && (cmd->flags == DMI_BL ||
+						cmd->flags == CMD_BL)) {
+				skip++;
+				continue;
+			}
+#else
 			if (cfg->reapply &&
 				(cmd->flags == CAM_ISP_IQ_BL)) {
 				skip++;
@@ -2567,6 +2574,7 @@ static int cam_ife_mgr_config_hw(void *hw_mgr_priv,
 				cmd->flags >= CAM_ISP_BL_MAX)
 				CAM_ERR(CAM_ISP, "Unexpected BL type %d",
 					cmd->flags);
+#endif
 
 			cdm_cmd->cmd[i - skip].bl_addr.mem_handle = cmd->handle;
 			cdm_cmd->cmd[i - skip].offset = cmd->offset;
@@ -4101,6 +4109,11 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 	}
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_BW_CONFIG_V2: {
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		struct cam_isp_bw_config_ab    *bw_config_ab =
+			(struct cam_isp_bw_config_ab *)blob_data;
+		struct cam_isp_prepare_hw_update_data   *prepare_hw_data;
+#else
 		struct cam_isp_bw_config_ab    *bw_config_ab;
 
 		struct cam_isp_prepare_hw_update_data   *prepare_hw_data;
@@ -4128,6 +4141,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 				* sizeof(struct cam_isp_bw_vote));
 			return -EINVAL;
 		}
+#endif
 		CAM_DBG(CAM_ISP, "AB L:%lld R:%lld usage_type %d",
 			bw_config_ab->left_pix_vote_ab,
 			bw_config_ab->right_pix_vote_ab,
@@ -5622,7 +5636,12 @@ static int cam_ife_hw_mgr_process_camif_sof(
 
 static int cam_ife_hw_mgr_handle_sof(
 	void                              *handler_priv,
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	void                              *payload,
+	uint64_t                          boot_time)
+#else
 	void                              *payload)
+#endif
 {
 	struct cam_isp_resource_node         *hw_res = NULL;
 	struct cam_ife_hw_mgr_ctx            *ife_hw_mgr_ctx;
@@ -6065,7 +6084,11 @@ int cam_ife_mgr_do_tasklet(void *handler_priv, void *evt_payload_priv)
 	CAM_DBG(CAM_ISP, "Calling SOF");
 	/* SOF IRQ */
 	cam_ife_hw_mgr_handle_sof(ife_hwr_mgr_ctx,
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		evt_payload_priv, evt_payload->boot_time);
+#else
 		evt_payload_priv);
+#endif
 
 	CAM_DBG(CAM_ISP, "Calling RUP");
 	/* REG UPDATE */

@@ -109,7 +109,11 @@ int cam_packet_util_get_kmd_buffer(struct cam_packet *packet,
 	}
 
 	if ((packet->kmd_cmd_buf_index < 0) ||
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		(packet->kmd_cmd_buf_index > packet->num_cmd_buf)) {
+#else
 		(packet->kmd_cmd_buf_index >= packet->num_cmd_buf)) {
+#endif
 		CAM_ERR(CAM_UTIL, "Invalid kmd buf index: %d",
 			packet->kmd_cmd_buf_index);
 		return -EINVAL;
@@ -401,6 +405,9 @@ int32_t cam_packet_validate_plane_size(
 {
 	int rc = 0;
 	uint32_t kmd_plane_size = 0;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	uint32_t bpp = io_cfg->bpp;
+#endif
 	uint32_t plane_stride = 0;
 	uint32_t slice_height = 0;
 	uint32_t metadata_size = 0;
@@ -445,7 +452,16 @@ int32_t cam_packet_validate_plane_size(
 	case CAM_FORMAT_PLAIN16_12:
 	case CAM_FORMAT_PLAIN16_14:
 	case CAM_FORMAT_PLAIN16_16:
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		if (bpp == 8 || bpp == 10 || bpp == 12
+			|| bpp == 14 || bpp == 16)
+			kmd_plane_size = plane_stride * slice_height;
+		break;
 	case CAM_FORMAT_PLAIN64:
+		if (bpp == 64)
+#else
+	case CAM_FORMAT_PLAIN64:
+#endif
 			kmd_plane_size = plane_stride * slice_height;
 		break;
 	case CAM_FORMAT_NV21:

@@ -1313,6 +1313,12 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 			if (slot->req_id > 0) {
 				last_app_idx = in_q->last_applied_idx;
 				in_q->last_applied_idx = idx;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+				if (abs(last_app_idx - idx) >=
+					reset_step + 1)
+					__cam_req_mgr_reset_req_slot(link,
+						last_app_idx);
+#endif
 			}
 
 			__cam_req_mgr_dec_idx(
@@ -3063,6 +3069,7 @@ int cam_req_mgr_link_v2(struct cam_req_mgr_ver_info *link_info)
 	memset(&root_dev, 0, sizeof(struct cam_create_dev_hdl));
 	root_dev.session_hdl = link_info->u.link_info_v2.session_hdl;
 	root_dev.priv = (void *)link;
+	root_dev.dev_id = CAM_CRM;
 
 	mutex_lock(&link->lock);
 	/* Create unique dev handle for link */

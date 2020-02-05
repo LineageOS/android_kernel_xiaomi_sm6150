@@ -233,7 +233,16 @@ int cam_flash_get_dt_data(struct cam_flash_ctrl *fctrl,
 		rc = -ENOMEM;
 		goto release_soc_res;
 	}
+
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	if (fctrl->io_master_info.master_type == I2C_MASTER) {
+		of_node = fctrl->of_node;
+	} else {
+		of_node = fctrl->pdev->dev.of_node;
+	}
+#else
 	of_node = fctrl->pdev->dev.of_node;
+#endif
 
 	rc = cam_soc_util_get_dt_properties(soc_info);
 	if (rc) {

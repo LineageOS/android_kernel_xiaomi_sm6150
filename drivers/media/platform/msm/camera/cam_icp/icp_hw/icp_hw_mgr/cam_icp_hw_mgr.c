@@ -58,7 +58,11 @@
 #define ICP_DEV_TYPE_TO_CLK_TYPE(dev_type) \
 	((dev_type == CAM_ICP_RES_TYPE_BPS) ? ICP_CLK_HW_BPS : ICP_CLK_HW_IPE)
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#define ICP_DEVICE_IDLE_TIMEOUT 3000
+#else
 #define ICP_DEVICE_IDLE_TIMEOUT 400
+#endif
 
 static struct cam_icp_hw_mgr icp_hw_mgr;
 
@@ -849,6 +853,11 @@ static bool cam_icp_debug_clk_update(struct cam_icp_clk_info *hw_mgr_clk_info)
 		icp_hw_mgr.icp_debug_clk != hw_mgr_clk_info->curr_clk) {
 		hw_mgr_clk_info->base_clk = icp_hw_mgr.icp_debug_clk;
 		hw_mgr_clk_info->curr_clk = icp_hw_mgr.icp_debug_clk;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		hw_mgr_clk_info->uncompressed_bw = icp_hw_mgr.icp_debug_clk;
+		hw_mgr_clk_info->compressed_bw = icp_hw_mgr.icp_debug_clk;
+		hw_mgr_clk_info->compressed_bw_ab = icp_hw_mgr.icp_debug_clk;
+#endif
 		CAM_DBG(CAM_ICP, "bc = %d cc = %d",
 			hw_mgr_clk_info->base_clk, hw_mgr_clk_info->curr_clk);
 		return true;

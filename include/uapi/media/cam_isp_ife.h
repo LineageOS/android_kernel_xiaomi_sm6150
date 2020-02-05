@@ -29,7 +29,12 @@
 #define CAM_ISP_IFE_OUT_RES_2PD                (CAM_ISP_IFE_OUT_RES_BASE + 22)
 #define CAM_ISP_IFE_OUT_RES_RDI_RD             (CAM_ISP_IFE_OUT_RES_BASE + 23)
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#define CAM_ISP_IFE_OUT_RES_LCR                (CAM_ISP_IFE_OUT_RES_BASE + 24)
+#define CAM_ISP_IFE_OUT_RES_MAX                (CAM_ISP_IFE_OUT_RES_BASE + 25)
+#else
 #define CAM_ISP_IFE_OUT_RES_MAX                (CAM_ISP_IFE_OUT_RES_BASE + 24)
+#endif
 
 
 /* IFE input port resource type (global unique) */
