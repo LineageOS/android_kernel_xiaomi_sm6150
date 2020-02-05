@@ -150,7 +150,7 @@ static int tfa_get_swvstep(struct tfa_device *tfa)
 	value = TFA_GET_BF(tfa, SWVSTEP);
 
 	/* Also set the new value in the struct */
-	tfa->vstep = value - 1;
+	tfa->vstep = value;
 
 	return value - 1; /* invalid if 0 */
 }
