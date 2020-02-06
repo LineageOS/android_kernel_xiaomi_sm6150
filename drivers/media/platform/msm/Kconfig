@@ -53,6 +53,14 @@ config MSMB_CAMERA_DEBUG
     ---help---
       Enable printk() debug for msm camera 2.0
 
+menuconfig CSID_CAMERA
+        bool "use CSID binning"
+        default n
+
+menuconfig SOFTLED_CAMERA
+        bool "use soft flash led"
+        default n
+
 if MSMB_CAMERA
 source "drivers/media/platform/msm/camera_v2/Kconfig"
 endif # MSMB_CAMERA

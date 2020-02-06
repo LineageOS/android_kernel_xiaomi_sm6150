@@ -38,6 +38,9 @@ struct  cam_sensor_query_cap {
 	uint32_t        flash_slot_id;
 	uint32_t        csiphy_slot_id;
 	uint32_t        ir_led_slot_id;
+#if defined (CONFIG_SOFTLED_CAMERA)
+	uint32_t        soft_flash_slot_id;
+#endif
 } __attribute__((packed));
 
 /**
