@@ -88,14 +88,8 @@ static enum Tfa98xx_Error tfa_set_osc_powerdown(struct tfa_device *tfa, int stat
 
 	return Tfa98xx_Error_Ok;
 }
-static enum Tfa98xx_Error tfa_update_lpm(struct tfa_device *tfa, int state)
-{
 	/* This function has no effect in general case, only for tfa9912 */
-	(void)tfa;
-	(void)state;
 
-	return Tfa98xx_Error_Ok;
-}
 static enum Tfa98xx_Error tfa_dsp_reset(struct tfa_device *tfa, int state)
 {
 	/* generic function */
@@ -150,7 +144,7 @@ static int tfa_get_swvstep(struct tfa_device *tfa)
 	value = TFA_GET_BF(tfa, SWVSTEP);
 
 	/* Also set the new value in the struct */
-	tfa->vstep = value - 1;
+	tfa->vstep = value;
 
 	return value - 1; /* invalid if 0 */
 }
@@ -196,7 +190,6 @@ void set_ops_defaults(struct tfa_device_ops *ops)
 	ops->set_mute = tfa_set_mute_nodsp;
 	ops->faim_protect = tfa_faim_protect;
 	ops->set_osc_powerdown = tfa_set_osc_powerdown;
-	ops->update_lpm = tfa_update_lpm;
 }
 
 /***********************************************************************************/
@@ -328,6 +321,51 @@ static enum Tfa98xx_Error tfa9912_specific(struct tfa_device *tfa)
 	}
 
 	return error;
+}
+static enum Tfa98xx_Error tfa9912_tfa_dsp_write_tables(struct tfa_device *tfa, int sample_rate)
+{
+	unsigned char buffer[15] = { 0 };
+	int size = 15 * sizeof(char);
+	switch (sample_rate) {
+	case 0:	/* 8kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 40);
+		break;
+	case 1:	/* 11.025KHz */
+		TFA_SET_BF(tfa, FRACTDEL, 38);
+		break;
+	case 2:	/* 12kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 37);
+		break;
+	case 3:	/* 16kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 59);
+		break;
+	case 4:	/* 22.05KHz */
+		TFA_SET_BF(tfa, FRACTDEL, 56);
+		break;
+	case 5:	/* 24kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 56);
+		break;
+	case 6:	/* 32kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 52);
+		break;
+	case 7:	/* 44.1kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 48);
+		break;
+	case 8:
+	default:/* 48kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 46);
+		break;
+	}
+	buffer[0] = (uint8_t)0;
+	buffer[1] = (uint8_t)MODULE_FRAMEWORK + 128;
+	buffer[2] = (uint8_t)FW_PAR_ID_SET_SENSES_DELAY;
+	if (sample_rate != 0) {
+		buffer[5] = 1;	/* Vdelay_P */
+		buffer[8] = 0;	/* Idelay_P */
+		buffer[11] = 1; /* Vdelay_S */
+		buffer[14] = 0; /* Idelay_S */
+	}
+	return dsp_msg(tfa, size, (char *)buffer);
 }
 
 static enum Tfa98xx_Error tfa9912_factory_trimmer(struct tfa_device *tfa)
@@ -510,14 +548,6 @@ static enum Tfa98xx_Error tfa9912_set_osc_powerdown(struct tfa_device *tfa, int 
 *
 *  @return Tfa98xx_Error_Ok when successfull, error otherwise.
 */
-static enum Tfa98xx_Error tfa9912_update_lpm(struct tfa_device *tfa, int state)
-{
-	if (state == 1 || state == 0) {
-		return -tfa_set_bf(tfa, TFA9912_BF_LPM1DIS, (uint16_t)state);
-	}
-	return Tfa98xx_Error_Bad_Parameter;
-}
-
 void tfa9912_ops(struct tfa_device_ops *ops)
 {
 	/* Set defaults for ops */
@@ -526,6 +556,7 @@ void tfa9912_ops(struct tfa_device_ops *ops)
 	ops->tfa_init = tfa9912_specific;
 	/* PLMA5322, PLMA5528 - Limits values of DCVOS and DCVOF. */
 	ops->reg_write = tfa9912_reg_write;
+	ops->dsp_write_tables = tfa9912_tfa_dsp_write_tables;
 	ops->factory_trimmer = tfa9912_factory_trimmer;
 	ops->auto_copy_mtp_to_iic = tfa9912_auto_copy_mtp_to_iic;
 	ops->set_swprof = tfa9912_set_swprofile;
@@ -535,7 +566,6 @@ void tfa9912_ops(struct tfa_device_ops *ops)
 	ops->set_mute = tfa9912_set_mute;
 	ops->faim_protect = tfa9912_faim_protect;
 	ops->set_osc_powerdown = tfa9912_set_osc_powerdown;
-	ops->update_lpm = tfa9912_update_lpm;
 }
 
 /***********************************************************************************/
@@ -1685,15 +1715,13 @@ static enum Tfa98xx_Error tfa9894_specific(struct tfa_device *tfa)
 
 	if (tfa->in_use == 0)
 		return Tfa98xx_Error_NotOpen;
-	if (tfa->verbose)
-		if (is_94_N2_device(tfa))
-			pr_debug("check_correct\n");
+
 	/* Unlock keys to write settings */
 	error = reg_write(tfa, 0x0F, 0x5A6B);
 	error = reg_read(tfa, 0xFB, &value);
 	xor = value ^ 0x005A;
 	error = reg_write(tfa, 0xA0, xor);
-	pr_debug("Device REFID:%x\n", tfa->rev);
+
 	/* The optimal settings */
 	if (tfa->rev == 0x0a94) {
 		/* V36 */
