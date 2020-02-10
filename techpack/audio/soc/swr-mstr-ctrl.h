@@ -172,6 +172,9 @@ struct swr_mstr_ctrl {
 	wait_queue_head_t pm_wq;
 	int wlock_holders;
 	u32 intr_mask;
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	bool swr_tx_wakeup_capable;
+#endif
 	u32 swr_irq_wakeup_capable;
 };
 

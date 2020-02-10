@@ -33,6 +33,9 @@ static int __init audio_q6_init(void)
 	avtimer_init();
 	msm_mdf_init();
 	voice_mhi_init();
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	elliptic_driver_init();
+#endif
 	return 0;
 }
 
@@ -53,6 +56,9 @@ static void __exit audio_q6_exit(void)
 	audio_cal_exit();
 	adsp_err_exit();
 	voice_mhi_exit();
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	elliptic_driver_exit();
+#endif
 }
 
 module_init(audio_q6_init);
