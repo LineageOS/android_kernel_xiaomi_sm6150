@@ -814,6 +814,10 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 		 * Nothing was reported previously
 		 * report a headphone or unsupported
 		 */
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
+			wcd_mbhc_report_plug(mbhc, 0, SND_JACK_HEADSET);
+#endif
 		wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADPHONE);
 	} else if (plug_type == MBHC_PLUG_TYPE_GND_MIC_SWAP) {
 		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADPHONE)
@@ -829,6 +833,10 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 		jack_type = SND_JACK_HEADSET;
 		if (anc_mic_found)
 			jack_type = SND_JACK_ANC_HEADPHONE;
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADPHONE)
+			wcd_mbhc_report_plug(mbhc, 0, SND_JACK_HEADPHONE);
+#endif
 
 		/*
 		 * If Headphone was reported previously, this will
@@ -1408,7 +1416,11 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 4);
 	} else {
 		/* Insertion debounce set to 96ms */
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 9);
+#else
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 6);
+#endif
 	}
 
 	/* Button Debounce set to 16ms */

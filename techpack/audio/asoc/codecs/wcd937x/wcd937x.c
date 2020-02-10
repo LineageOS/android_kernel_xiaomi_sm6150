@@ -41,6 +41,9 @@
 
 #define WCD937X_VERSION_1_0 1
 #define WCD937X_VERSION_ENTRY_SIZE 32
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#define EAR_RX_PATH_AUX 1
+#endif
 
 enum {
 	CODEC_TX = 0,
@@ -1243,6 +1246,9 @@ static int wcd937x_enable_req(struct snd_soc_dapm_widget *w,
 		snd_soc_update_bits(codec, WCD937X_DIGITAL_CDC_REQ_CTL, 0x01,
 				    0x00);
 		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH2, 0x40, 0x40);
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH3, 0x40, 0x40);
+#endif
 		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH3_HPF, 0x40, 0x40);
 		snd_soc_update_bits(codec, WCD937X_DIGITAL_CDC_DIG_CLK_CTL,
 				    0x70, 0x70);
@@ -1250,6 +1256,9 @@ static int wcd937x_enable_req(struct snd_soc_dapm_widget *w,
 		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH2, 0x40, 0x00);
 		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH2, 0x80, 0x80);
 		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH3, 0x80, 0x80);
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH3_HPF, 0x80, 0x80);
+#endif
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		snd_soc_update_bits(codec, WCD937X_ANA_TX_CH1, 0x80, 0x00);
@@ -1711,8 +1720,13 @@ static const struct snd_kcontrol_new wcd937x_snd_controls[] = {
 	SOC_SINGLE_EXT("HPHR_COMP Switch", SND_SOC_NOPM, 1, 1, 0,
 		wcd937x_get_compander, wcd937x_set_compander),
 
+#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+	SOC_SINGLE_TLV("HPHL Volume", WCD937X_HPH_L_EN, 0, 24, 1, line_gain),
+	SOC_SINGLE_TLV("HPHR Volume", WCD937X_HPH_R_EN, 0, 24, 1, line_gain),
+#else
 	SOC_SINGLE_TLV("HPHL Volume", WCD937X_HPH_L_EN, 0, 20, 1, line_gain),
 	SOC_SINGLE_TLV("HPHR Volume", WCD937X_HPH_R_EN, 0, 20, 1, line_gain),
+#endif
 	SOC_SINGLE_TLV("ADC1 Volume", WCD937X_ANA_TX_CH1, 0, 20, 0, analog_gain),
 	SOC_SINGLE_TLV("ADC2 Volume", WCD937X_ANA_TX_CH2, 0, 20, 0, analog_gain),
 	SOC_SINGLE_TLV("ADC3 Volume", WCD937X_ANA_TX_CH3, 0, 20, 0, analog_gain),
