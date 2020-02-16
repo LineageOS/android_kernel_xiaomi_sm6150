@@ -1005,7 +1005,6 @@ enum Tfa98xx_Error tfa_status(struct tfa_device *tfa);
  */
 int tfa_dev_get_mtpb(struct tfa_device *tfa);
 
-enum Tfa98xx_Error tfaGetFwApiVersion(struct tfa_device *tfa, unsigned char *pFirmwareVersion);
 #ifdef __cplusplus
 }
 #endif

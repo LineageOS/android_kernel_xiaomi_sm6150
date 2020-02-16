@@ -140,7 +140,6 @@ struct tfa_device {
 	int advance_keys_handling;
 	int needs_reset; /**< add the reset trigger for SetAlgoParams and SetMBDrc commands */
 	struct kmem_cache *cachep;	/**< Memory allocator handle */
-	char fw_itf_ver[4];          /* Firmware ITF version */
 };
 
 /**

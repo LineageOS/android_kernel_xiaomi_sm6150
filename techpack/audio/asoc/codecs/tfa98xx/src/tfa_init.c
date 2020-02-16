@@ -330,6 +330,60 @@ static enum Tfa98xx_Error tfa9912_specific(struct tfa_device *tfa)
 	return error;
 }
 
+static enum Tfa98xx_Error tfa9912_tfa_dsp_write_tables(struct tfa_device *tfa, int sample_rate)
+{
+	unsigned char buffer[15] = { 0 };
+	int size = 15 * sizeof(char);
+
+	/* Write the fractional delay in the hardware register 'cs_frac_delay' */
+	switch (sample_rate) {
+	case 0:	/* 8kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 40);
+		break;
+	case 1:	/* 11.025KHz */
+		TFA_SET_BF(tfa, FRACTDEL, 38);
+		break;
+	case 2:	/* 12kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 37);
+		break;
+	case 3:	/* 16kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 59);
+		break;
+	case 4:	/* 22.05KHz */
+		TFA_SET_BF(tfa, FRACTDEL, 56);
+		break;
+	case 5:	/* 24kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 56);
+		break;
+	case 6:	/* 32kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 52);
+		break;
+	case 7:	/* 44.1kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 48);
+		break;
+	case 8:
+	default:/* 48kHz */
+		TFA_SET_BF(tfa, FRACTDEL, 46);
+		break;
+	}
+
+	/* First copy the msg_id to the buffer */
+	buffer[0] = (uint8_t)0;
+	buffer[1] = (uint8_t)MODULE_FRAMEWORK + 128;
+	buffer[2] = (uint8_t)FW_PAR_ID_SET_SENSES_DELAY;
+
+	/* Required for all FS exept 8kHz (8kHz is all zero) */
+	if (sample_rate != 0) {
+		buffer[5] = 1;	/* Vdelay_P */
+		buffer[8] = 0;	/* Idelay_P */
+		buffer[11] = 1; /* Vdelay_S */
+		buffer[14] = 0; /* Idelay_S */
+	}
+
+	/* send SetSensesDelay msg */
+	return dsp_msg(tfa, size, (char *)buffer);
+}
+
 static enum Tfa98xx_Error tfa9912_factory_trimmer(struct tfa_device *tfa)
 {
 	unsigned short currentValue, delta;
@@ -526,6 +580,7 @@ void tfa9912_ops(struct tfa_device_ops *ops)
 	ops->tfa_init = tfa9912_specific;
 	/* PLMA5322, PLMA5528 - Limits values of DCVOS and DCVOF. */
 	ops->reg_write = tfa9912_reg_write;
+	ops->dsp_write_tables = tfa9912_tfa_dsp_write_tables;
 	ops->factory_trimmer = tfa9912_factory_trimmer;
 	ops->auto_copy_mtp_to_iic = tfa9912_auto_copy_mtp_to_iic;
 	ops->set_swprof = tfa9912_set_swprofile;

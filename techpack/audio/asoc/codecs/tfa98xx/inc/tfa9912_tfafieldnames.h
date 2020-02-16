@@ -11,7 +11,7 @@
 #define _TFA9912_TFAFIELDNAMES_H
 
 
-#define TFA9912_I2CVERSION    1.43
+#define TFA9912_I2CVERSION    1.41
 
 typedef enum nxpTfa9912BfEnumList {
     TFA9912_BF_PWDN  = 0x0000,    /*!< Powerdown selection                                */
@@ -1764,6 +1764,5 @@ enum tfa9912_irq {
 	{ 42, "STSAMMOD"},\
 	{ 43, "STTAPMOD"},\
 	{ 44, "STTAPTRG"},\
-	{ 45, "45"},\
 };
 #endif /* _TFA9912_TFAFIELDNAMES_H */
