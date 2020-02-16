@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "81a2c8e4_ea799cdf",
+        "filename": "drivers/gpu/drm/msm/dsi-staging/dsi_panel.c",
+        "patchSetId": 8
+      },
+      "lineNbr": 581,
+      "author": {
+        "id": 13648
+      },
+      "writtenOn": "2020-02-16T21:31:41Z",
+      "side": 1,
+      "message": "Wrong indentation.",
+      "range": {
+        "startLine": 580,
+        "startChar": 0,
+        "endLine": 581,
+        "endChar": 39
+      },
+      "revId": "c18e8cb6bb20883047c88a7eade303bfc22fa820",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": true
+    }
+  ]
+}
