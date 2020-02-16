@@ -1,17 +1,12 @@
-/*
- * Copyright (C) 2014 NXP Semiconductors, All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
+/** Filename: tfa9894_tfaFieldnames.h
+ *  This file was generated automatically on 09/06/17 at 14:51:37. 
+ *  Source file: TFA9894_N1A1_I2C_RegisterMap.xlsx
  */
 
 #ifndef _TFA9894_TFAFIELDNAMES_H
 #define _TFA9894_TFAFIELDNAMES_H
 
-
-#define TFA9894_I2CVERSION    17.0
+#define TFA9894_I2CVERSION    7
 
 typedef enum nxpTfa9894BfEnumList {
     TFA9894_BF_PWDN  = 0x0000,    /*!< Powerdown control                                  */
@@ -225,7 +220,6 @@ typedef enum nxpTfa9894BfEnumList {
     TFA9894_BF_DCDIS = 0x7140,    /*!< DCDC on/off                                        */
     TFA9894_BF_DCPWM = 0x7150,    /*!< DCDC PWM only mode                                 */
     TFA9894_BF_DCTRACK= 0x7160,    /*!< Boost algorithm selection, effective only when boost_intelligent is set to 1 */
-    TFA9894_BF_DCENVSEL= 0x7170,    /*!< Selection of data for adaptive boost algorithm, effective only when boost_intelligent is set to 1 */
     TFA9894_BF_DCTRIP= 0x7204,    /*!< 1st adaptive boost trip levels, effective only when DCIE is set to 1 */
     TFA9894_BF_DCTRIP2= 0x7254,    /*!< 2nd adaptive boost trip levels, effective only when DCIE is set to 1 */
     TFA9894_BF_DCTRIPT= 0x72a4,    /*!< Track adaptive boost trip levels, effective only when boost_intelligent is set to 1 */
@@ -486,7 +480,6 @@ typedef enum nxpTfa9894BfEnumList {
    { 0x7140, "DCDIS"},    /* DCDC on/off                                       , */\
    { 0x7150, "DCPWM"},    /* DCDC PWM only mode                                , */\
    { 0x7160, "DCTRACK"},    /* Boost algorithm selection, effective only when boost_intelligent is set to 1, */\
-   { 0x7170, "DCENVSEL"},    /* Selection of data for adaptive boost algorithm, effective only when boost_intelligent is set to 1, */\
    { 0x7204, "DCTRIP"},    /* 1st adaptive boost trip levels, effective only when DCIE is set to 1, */\
    { 0x7254, "DCTRIP2"},    /* 2nd adaptive boost trip levels, effective only when DCIE is set to 1, */\
    { 0x72a4, "DCTRIPT"},    /* Track adaptive boost trip levels, effective only when boost_intelligent is set to 1, */\
