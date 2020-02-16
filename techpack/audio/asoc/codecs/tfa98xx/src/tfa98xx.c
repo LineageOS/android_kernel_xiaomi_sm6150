@@ -204,6 +204,7 @@ static enum tfa_error tfa98xx_tfa_start(struct tfa98xx *tfa98xx, int next_profil
 	ktime_t start_time, stop_time;
 	u64 delta_time;
 
+	pr_debug("%s  next_profile=%d  vstep=%d\n", __func__, next_profile, vstep);
 	if (trace_level & 8) {
 		start_time = ktime_get_boottime();
 	}
@@ -519,13 +520,13 @@ static ssize_t tfa98xx_dbgfs_start_set(struct file *file,
 	enum tfa_error ret;
 	char buf[32];
 	const char ref[] = "please calibrate now";
-	int buf_size, cal_profile = 0;
+	int buf_size;
 
 	/* check string length, and account for eol */
 	if (count > sizeof(ref) + 1 || count < (sizeof(ref) - 1))
 		return -EINVAL;
 
-	buf_size = min(count, (size_t)(sizeof(buf) - 1));
+	buf_size = min(count, (size_t)(sizeof(buf)-1));
 	if (copy_from_user(buf, user_buf, buf_size))
 		return -EFAULT;
 	buf[buf_size] = 0;
@@ -536,15 +537,8 @@ static ssize_t tfa98xx_dbgfs_start_set(struct file *file,
 
 	mutex_lock(&tfa98xx->dsp_lock);
 	ret = tfa_calibrate(tfa98xx->tfa);
-	if (ret == tfa_error_ok) {
-		cal_profile = tfaContGetCalProfile(tfa98xx->tfa);
-		if (cal_profile < 0) {
-			pr_warn("[0x%x] Calibration profile not found\n",
-				tfa98xx->i2c->addr);
-		}
-
-		ret = tfa98xx_tfa_start(tfa98xx, cal_profile, tfa98xx->vstep);
-	}
+	if (ret == tfa_error_ok)
+		ret = tfa98xx_tfa_start(tfa98xx, tfa98xx->profile, tfa98xx->vstep);
 	if (ret == tfa_error_ok)
 		tfa_dev_set_state(tfa98xx->tfa, TFA_STATE_UNMUTE, 0);
 	mutex_unlock(&tfa98xx->dsp_lock);
@@ -1171,6 +1165,7 @@ static int tfa98xx_set_vstep(struct snd_kcontrol *kcontrol,
 	int err = 0;
 	int change = 0;
 
+	pr_debug("%s  no_start=%d\n", __func__, no_start);
 	if (no_start != 0)
 		return 0;
 
@@ -1783,18 +1778,21 @@ static int tfa98xx_append_i2c_address(struct device *dev,
 			snprintf(buf, 50, "%s-%x-%x",dai_drv[i].name, i2cbus,
 				addr);
 			dai_drv[i].name = tfa98xx_devm_kstrdup(dev, buf);
+			pr_info("tfa98xx_append_i2c_address()  dai_drv[%d].name = [%s]\n", i, dai_drv[i].name);
 
 			memset(buf, 0x00, sizeof(buf));
 			snprintf(buf, 50, "%s-%x-%x",
 				dai_drv[i].playback.stream_name,
 				i2cbus, addr);
 			dai_drv[i].playback.stream_name = tfa98xx_devm_kstrdup(dev, buf);
+			pr_info("tfa98xx_append_i2c_address()  dai_drv[%d].playback.stream_name = [%s]\n", i, dai_drv[i].playback.stream_name);
 
 			memset(buf, 0x00, sizeof(buf));
 			snprintf(buf, 50, "%s-%x-%x",
 				dai_drv[i].capture.stream_name,
 				i2cbus, addr);
 			dai_drv[i].capture.stream_name = tfa98xx_devm_kstrdup(dev, buf);
+			pr_info("tfa98xx_append_i2c_address()  dai_drv[%d].capture.stream_name = [%s]\n", i, dai_drv[i].capture.stream_name);
 		}
 
 	/* the idea behind this is convert:
@@ -2057,25 +2055,17 @@ enum Tfa98xx_Error tfa98xx_read_data(struct tfa_device *tfa,
 	struct i2c_client *tfa98xx_client;
 	int err;
 	int tries = 0;
-	unsigned char *reg_buf = NULL;
 	struct i2c_msg msgs[] = {
 		{
 			.flags = 0,
 			.len = 1,
-			.buf = NULL,
+			.buf = &reg,
 		}, {
 			.flags = I2C_M_RD,
 			.len = len,
 			.buf = value,
 		},
 	};
-	reg_buf = (unsigned char *)kmalloc(sizeof(reg), GFP_DMA);     //GRP_KERNEL  also works,
-	if (!reg_buf) {
-		return -ENOMEM;;
-	}
-
-	*reg_buf = reg;
-	msgs[0].buf = reg_buf;
 
 	if (tfa == NULL) {
 		pr_err("No device available\n");
@@ -2112,7 +2102,6 @@ enum Tfa98xx_Error tfa98xx_read_data(struct tfa_device *tfa,
 		pr_err("No device available\n");
 		error = Tfa98xx_Error_Fail;
 	}
-	kfree(reg_buf);
 	return error;
 }
 
@@ -2255,19 +2244,15 @@ static void tfa98xx_container_loaded(const struct firmware *cont, void *context)
 
 	pr_debug("loaded %s - size: %zu\n", fw_name, cont->size);
 
-	mutex_lock(&tfa98xx_mutex);
 	if (tfa98xx_container == NULL) {
 		container = kzalloc(cont->size, GFP_KERNEL);
 		if (container == NULL) {
-			mutex_unlock(&tfa98xx_mutex);
-			release_firmware(cont);
 			pr_err("Error allocating memory\n");
 			return;
 		}
 
 		container_size = cont->size;
 		memcpy(container, cont->data, container_size);
-		release_firmware(cont);
 
 		pr_debug("%.2s%.2s\n", container->version, container->subversion);
 		pr_debug("%.8s\n", container->customer);
@@ -2278,7 +2263,6 @@ static void tfa98xx_container_loaded(const struct firmware *cont, void *context)
 
 		tfa_err = tfa_load_cnt(container, container_size);
 		if (tfa_err != tfa_error_ok) {
-			mutex_unlock(&tfa98xx_mutex);
 			kfree(container);
 			dev_err(tfa98xx->dev, "Cannot load container file, aborting\n");
 			return;
@@ -2289,9 +2273,7 @@ static void tfa98xx_container_loaded(const struct firmware *cont, void *context)
 	else {
 		pr_debug("container file already loaded...\n");
 		container = tfa98xx_container;
-		release_firmware(cont);
 	}
-	mutex_unlock(&tfa98xx_mutex);
 
 	tfa98xx->tfa->cnt = container;
 
@@ -2300,9 +2282,6 @@ static void tfa98xx_container_loaded(const struct firmware *cont, void *context)
 		(Documentation/i2c/writing-clients)
 	*/
 	tfa98xx->tfa->buffer_size = 65536;
-
-	/* DSP messages via i2c */
-	tfa98xx->tfa->has_msg = 0;
 
 	if (tfa_dev_probe(tfa98xx->i2c->addr, tfa98xx->tfa) != 0) {
 		dev_err(tfa98xx->dev, "Failed to probe TFA98xx @ 0x%.2x\n", tfa98xx->i2c->addr);
@@ -2338,7 +2317,7 @@ static void tfa98xx_container_loaded(const struct firmware *cont, void *context)
 		int nprof = tfa_cnt_get_dev_nprof(tfa98xx->tfa);
 		for (i = 0; i < nprof; i++) {
 			if (strcmp(tfa_cont_profile_name(tfa98xx, i),
-				dflt_prof_name) == 0) {
+							dflt_prof_name) == 0) {
 				tfa98xx->profile = i;
 				dev_info(tfa98xx->dev,
 					"changing default profile to %s (%d)\n",
@@ -2389,11 +2368,21 @@ static void tfa98xx_container_loaded(const struct firmware *cont, void *context)
 
 static int tfa98xx_load_container(struct tfa98xx *tfa98xx)
 {
-	tfa98xx->dsp_fw_state = TFA98XX_DSP_FW_PENDING;
+	const struct firmware *firmware;
+	int rc = 0;
 
-	return request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
-		fw_name, tfa98xx->dev, GFP_KERNEL,
-		tfa98xx, tfa98xx_container_loaded);
+	tfa98xx->dsp_fw_state = TFA98XX_DSP_FW_PENDING;
+	mutex_lock(&tfa98xx_mutex);
+	rc = request_firmware(&firmware, fw_name, tfa98xx->dev);
+	if (rc <0) {
+		mutex_unlock(&tfa98xx_mutex);
+		return rc;
+	}
+	tfa98xx_container_loaded(firmware, tfa98xx);
+	release_firmware(firmware);
+	mutex_unlock(&tfa98xx_mutex);
+
+	return rc;
 }
 
 
@@ -2479,12 +2468,12 @@ static void tfa98xx_dsp_init(struct tfa98xx *tfa98xx)
 	bool sync = false;
 
 	if (tfa98xx->dsp_fw_state != TFA98XX_DSP_FW_OK) {
-		pr_debug("Skipping tfa_dev_start (no FW: %d)\n", tfa98xx->dsp_fw_state);
+		pr_debug("%s Skipping tfa_dev_start (no FW: %d)\n", __func__, tfa98xx->dsp_fw_state);
 		return;
 	}
 
 	if (tfa98xx->dsp_init == TFA98XX_DSP_INIT_DONE) {
-		pr_debug("Stream already started, skipping DSP power-on\n");
+		pr_debug("%s Stream already started, skipping DSP power-on\n", __func__);
 		return;
 	}
 
@@ -2492,6 +2481,7 @@ static void tfa98xx_dsp_init(struct tfa98xx *tfa98xx)
 
 	tfa98xx->dsp_init = TFA98XX_DSP_INIT_PENDING;
 
+	pr_debug("[NXP] %s  init_count=%d\n", __func__, tfa98xx->init_count);
 	if (tfa98xx->init_count < TF98XX_MAX_DSP_START_TRY_COUNT) {
 		/* directly try to start DSP */
 		ret = tfa98xx_tfa_start(tfa98xx, tfa98xx->profile, tfa98xx->vstep);
@@ -2592,8 +2582,6 @@ static void tfa98xx_dsp_init_work(struct work_struct *work)
 static void tfa98xx_interrupt(struct work_struct *work)
 {
 	struct tfa98xx *tfa98xx = container_of(work, struct tfa98xx, interrupt_work.work);
-
-	pr_info("\n");
 
 	if (tfa98xx->flags & TFA98XX_FLAG_TAPDET_AVAILABLE) {
 		/* check for tap interrupt */
@@ -3089,8 +3077,6 @@ static const struct regmap_config tfa98xx_regmap = {
 
 static void tfa98xx_irq_tfa2(struct tfa98xx *tfa98xx)
 {
-	pr_info("\n");
-
 	/*
 	 * mask interrupts
 	 * will be unmasked after handling interrupts in workqueue
@@ -4100,6 +4086,7 @@ static int tfa98xx_i2c_probe(struct i2c_client *i2c,
 			pr_info("TFA9894 detected\n");
 			tfa98xx->flags |= TFA98XX_FLAG_MULTI_MIC_INPUTS;
 			tfa98xx->flags |= TFA98XX_FLAG_TDM_DEVICE;
+			tfa98xx->flags |= TFA98XX_FLAG_SKIP_INTERRUPTS;
 			break;
 		case 0x80: /* tfa9890 */
 		case 0x81: /* tfa9890 */
