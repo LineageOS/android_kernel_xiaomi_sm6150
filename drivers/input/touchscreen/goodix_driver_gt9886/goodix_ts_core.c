@@ -896,7 +896,6 @@ static irqreturn_t goodix_ts_threadirq_func(int irq, void *data)
 		if (!ext_module->funcs->irq_event)
 			continue;
 		r = ext_module->funcs->irq_event(core_data, ext_module);
-		ts_info("enter %s r=%d\n", __func__, r);
 		if (r == EVT_CANCEL_IRQEVT) {
 			mutex_unlock(&goodix_modules.mutex);
 			return IRQ_HANDLED;
