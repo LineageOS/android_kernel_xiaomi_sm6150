@@ -3260,6 +3260,17 @@ static void _sde_crtc_set_dim_layer_expo(struct sde_crtc_state *cstate,
 	cstate->exposure_dim_layer = &cstate->dim_layer[cstate->num_dim_layers];
 	sde_crtc_build_dim_layer_expo(cstate->exposure_dim_layer, mode->hdisplay, mode->vdisplay, val);
 }
+
+bool sde_crtc_get_dim_layer_expo_status(struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc_state *cstate;
+
+	if (!crtc_state)
+		return false;
+
+	cstate = to_sde_crtc_state(crtc_state);
+	return !!cstate->dim_layer_expo_status;
+}
 #endif
 
 /**

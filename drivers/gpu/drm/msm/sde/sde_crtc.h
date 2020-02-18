@@ -433,6 +433,7 @@ struct sde_crtc_state {
 	u64 sbuf_clk_rate[2];
 	bool sbuf_clk_shifted;
 #ifdef CONFIG_DRM_SDE_EXPO
+	bool dim_layer_expo_status;
 	struct sde_hw_dim_layer *exposure_dim_layer;
 #endif
 
