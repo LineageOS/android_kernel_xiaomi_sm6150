@@ -722,6 +722,7 @@ int sde_connector_update_hbm(struct sde_connector *c_conn)
 	struct sde_connector_state *c_state;
 	int rc = 0;
 	static bool dim_layer_status;
+	static bool dim_layer_expo_status;
 	struct dsi_cmd_desc *hbm_cmds = NULL;
 
 	if (!c_conn) {
@@ -752,8 +753,9 @@ int sde_connector_update_hbm(struct sde_connector *c_conn)
 		return rc;
 	}
 
+	dim_layer_expo_status = sde_crtc_get_dim_layer_expo_status(c_conn->encoder->crtc->state);
 	dim_layer_status = sde_crtc_get_dim_layer_status(c_conn->encoder->crtc->state);
-	if (!dim_layer_status) {
+	if (!dim_layer_status || !dim_layer_expo_status) {
 		if (dsi_display->panel->fod_dimlayer_hbm_enabled) {
 			SDE_ATRACE_BEGIN("set_hbm_off");
 			mutex_lock(&dsi_display->panel->panel_lock);
@@ -823,6 +825,7 @@ int sde_connector_update_hbm(struct sde_connector *c_conn)
 			}
 		}
 	}
+	pr_debug("dim_layer_expo_status:%d\n", dim_layer_expo_status);
 	pr_debug("dim_layer_status:%d fod_dimlayer_hbm_enabled:%d\n", dim_layer_status, dsi_display->panel->fod_dimlayer_hbm_enabled);
 	return rc;
 }
