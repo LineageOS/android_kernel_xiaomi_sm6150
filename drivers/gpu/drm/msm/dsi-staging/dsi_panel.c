@@ -868,6 +868,10 @@ int dsi_panel_enable_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 			rc = dsi_panel_update_backlight(panel, bl_lvl);
 	}
 
+#ifdef CONFIG_DRM_SDE_EXPO
+	bl_lvl = expo_calc_backlight(bl_lvl);
+#endif
+
 	panel->last_bl_lvl = bl_lvl;
 
 	return rc;
