@@ -16,6 +16,7 @@
 #include <linux/backlight.h>
 #include <linux/of_gpio.h>
 #include <linux/sysfs.h>
+#include <video/mipi_display.h>
 
 #include "dsi_display.h"
 #include "dsi_panel.h"
@@ -654,13 +655,6 @@ int dsi_panel_bl_brightness_handoff(struct dsi_panel *panel)
 	rc = dsi_panel_bl_read_brightness(panel, bl_cfg, &bl_lvl);
 	if (rc) {
 		pr_err("Failed to read brightness from panel.\n");
-		return rc;
-	}
-
-	rc = dsi_backlight_lerp(bl_cfg->bl_min_level, bl_cfg->bl_max_level, 1,
-		bl_cfg->brightness_max_level, bl_lvl, &brightness);
-	if (rc) {
-		pr_err("Failed to map brightness to user space.\n");
 		return rc;
 	}
 
