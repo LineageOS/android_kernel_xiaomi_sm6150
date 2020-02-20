@@ -657,13 +657,6 @@ int dsi_panel_bl_brightness_handoff(struct dsi_panel *panel)
 		return rc;
 	}
 
-	rc = dsi_backlight_lerp(bl_cfg->bl_min_level, bl_cfg->bl_max_level, 1,
-		bl_cfg->brightness_max_level, bl_lvl, &brightness);
-	if (rc) {
-		pr_err("Failed to map brightness to user space.\n");
-		return rc;
-	}
-
 	pr_debug("brightness 0x%x to user space %d\n", bl_lvl, brightness);
 	bl_device->props.brightness = brightness;
 
