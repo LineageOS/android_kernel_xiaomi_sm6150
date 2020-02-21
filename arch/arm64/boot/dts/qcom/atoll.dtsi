@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, The Linux Foundation.All rights reserved.
+/* Copyright (c) 2019-2020, The Linux Foundation.All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -38,7 +38,7 @@
 
 	mem-offline {
 		compatible = "qcom,mem-offline";
-		offline-sizes = <0x1 0x40000000 0x0 0x80000000>,
+		offline-sizes = <0x1 0x40000000 0x0 0x40000000>,
 						<0x1 0xc0000000 0x0 0xc0000000>,
 						<0x2 0xc0000000 0x1 0x40000000>;
 		granule = <512>;
@@ -640,7 +640,7 @@
 		};
 
 		disp_rdump_memory: disp_rdump_region@9c000000 {
-			reg = <0x0 0x9c000000 0x0 0x01800000>;
+			reg = <0x0 0x9c000000 0x0 0x01700000>;
 			label = "disp_rdump_region";
 		};
 
@@ -1512,6 +1512,13 @@
 		qcom,minidump-id = <3>;
 		qcom,aux-minidump-ids = <4>;
 		qcom,complete-ramdump;
+
+		qcom,msm-bus,name = "pil-modem";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<129 512 0 0>,
+				<129 512 0 1041408>;
 
 		/* Inputs from mss */
 		interrupts-extended = <&pdc GIC_SPI 266 IRQ_TYPE_EDGE_RISING>,
@@ -2972,6 +2979,7 @@
 			    "tsens_tm_physical";
 		interrupts = <0 506 0>, <0 508 0>;
 		interrupt-names = "tsens-upper-lower", "tsens-critical";
+		tsens-reinit-wa;
 		#thermal-sensor-cells = <1>;
 	};
 
@@ -2983,6 +2991,7 @@
 			    "tsens_tm_physical";
 		interrupts = <0 507 0>, <0 509 0>;
 		interrupt-names = "tsens-upper-lower", "tsens-critical";
+		tsens-reinit-wa;
 		#thermal-sensor-cells = <1>;
 	};
 
@@ -3067,7 +3076,7 @@
 		interrupt-names = "slimbus_irq", "slimbus_bam_irq";
 		qcom,apps-ch-pipes = <0x700000>;
 		qcom,ea-pc = <0x340>;
-		qcom,iommu-atomic-ctx;
+		qcom,iommu-s1-bypass;
 		status = "ok";
 
 		iommu_slim_aud_ctrl_cb: qcom,iommu_slim_ctrl_cb {
@@ -3400,6 +3409,8 @@
 		compatible = "qcom,bimc-bwmon4";
 		reg = <0x00060400 0x300>, <0x00060300 0x200>;
 		reg-names = "base", "global_base";
+		qcom,msm_bus = <MSM_BUS_MASTER_NPU MSM_BUS_SLAVE_CDSP_GEM_NOC>;
+		qcom,msm_bus_name = "npu_bwmon_cdsp";
 		clocks = <&clock_gcc GCC_NPU_BWMON_DMA_CFG_AHB_CLK>,
 				<&clock_gcc GCC_NPU_BWMON_AXI_CLK>;
 		clock-names = "gcc_npu_bwmon_dma_cfg_ahb_clk",
