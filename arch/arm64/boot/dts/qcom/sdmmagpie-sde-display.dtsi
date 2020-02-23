@@ -314,6 +314,7 @@
 		qcom,dsi-phy-num = <0>;
 		qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
 		qcom,dsi-panel = <&dsi_ss_fhd_ea_f10_cmd>;
+		qcom,panel-allow-phy-poweroff;
 	};
 
 	dsi_ss_fhd_eb_f10_cmd_display: qcom,dsi-display@18 {
@@ -326,6 +327,7 @@
 		qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
 
 		qcom,dsi-panel = <&dsi_ss_fhd_eb_f10_cmd>;
+		qcom,panel-allow-phy-poweroff;
 	};
 
 	dsi_g7b_37_02_0a_video_display: qcom,dsi-display@20 {
@@ -338,6 +340,7 @@
 		qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
 
 		qcom,dsi-panel = <&dsi_g7b_37_02_0a_video>;
+		qcom,panel-allow-phy-poweroff;
 	};
 
 	dsi_g7b_42_02_0b_video_display: qcom,dsi-display@21 {
@@ -350,6 +353,7 @@
 		qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
 
 		qcom,dsi-panel = <&dsi_g7b_42_02_0b_video>;
+		qcom,panel-allow-phy-poweroff;
         };
 
 	dsi_sharp_qsync_wqhd_cmd_display: qcom,dsi-display@22 {
