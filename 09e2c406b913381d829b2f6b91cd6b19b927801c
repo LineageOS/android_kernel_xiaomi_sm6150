@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "42e56475_5e13327f",
+        "filename": "techpack/audio/dsp/elliptic/io_modules/userspace_test/elliptic_data_io.c",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 13648
+      },
+      "writtenOn": "2020-02-23T21:46:28Z",
+      "side": 0,
+      "message": "Remove also the test/debug files.",
+      "revId": "09e2c406b913381d829b2f6b91cd6b19b927801c",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": true
+    }
+  ]
+}
