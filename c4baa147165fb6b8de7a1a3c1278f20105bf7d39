@@ -22,6 +22,30 @@
       "revId": "c4baa147165fb6b8de7a1a3c1278f20105bf7d39",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
       "unresolved": true
+    },
+    {
+      "key": {
+        "uuid": "91144362_89734bfc",
+        "filename": "arch/arm64/boot/dts/qcom/sdmmagpie.dtsi",
+        "patchSetId": 2
+      },
+      "lineNbr": 506,
+      "author": {
+        "id": 24438
+      },
+      "writtenOn": "2020-02-23T18:07:31Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "8a5ace14_dec2b9c4",
+      "range": {
+        "startLine": 506,
+        "startChar": 39,
+        "endLine": 506,
+        "endChar": 40
+      },
+      "revId": "c4baa147165fb6b8de7a1a3c1278f20105bf7d39",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": false
     }
   ]
 }
