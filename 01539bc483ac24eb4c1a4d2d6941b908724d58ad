@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "46ae0c12_1bafb5a5",
+        "filename": "techpack/audio/asoc/codecs/tfa98xx/.gitignore",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 13648
+      },
+      "writtenOn": "2020-02-23T09:08:52Z",
+      "side": 0,
+      "message": "Do you need to remove .gitignore?",
+      "revId": "01539bc483ac24eb4c1a4d2d6941b908724d58ad",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": true
+    }
+  ]
+}
