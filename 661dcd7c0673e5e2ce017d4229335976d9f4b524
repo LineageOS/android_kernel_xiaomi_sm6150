@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "8a57d9de_6e091bb4",
+        "filename": "drivers/gpu/drm/msm/sde/sde_expo_dim_layer.c",
+        "patchSetId": 2
+      },
+      "lineNbr": 114,
+      "author": {
+        "id": 24438
+      },
+      "writtenOn": "2020-02-24T22:51:47Z",
+      "side": 1,
+      "message": "i probably need to reduce this to 100",
+      "range": {
+        "startLine": 114,
+        "startChar": 68,
+        "endLine": 114,
+        "endChar": 71
+      },
+      "revId": "661dcd7c0673e5e2ce017d4229335976d9f4b524",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71",
+      "unresolved": true
+    }
+  ]
+}
