@@ -73,6 +73,9 @@ struct pl_data {
 	struct delayed_work	status_change_work;
 	struct work_struct	pl_disable_forever_work;
 	struct work_struct	pl_taper_work;
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	struct delayed_work	pl_awake_work;
+#endif
 	struct delayed_work	fcc_stepper_work;
 	bool			taper_work_running;
 	struct power_supply	*main_psy;
@@ -1335,6 +1338,16 @@ static void pl_disable_forever_work(struct work_struct *work)
 		vote(chip->hvdcp_hw_inov_dis_votable, PL_VOTER, false, 0);
 }
 
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+static void pl_awake_work(struct work_struct *work)
+{
+	struct pl_data *chip = container_of(work,
+			struct pl_data, pl_awake_work.work);
+
+	vote(chip->pl_awake_votable, PL_VOTER, false, 0);
+}
+#endif
+
 static int pl_disable_vote_callback(struct votable *votable,
 		void *data, int pl_disable, const char *client)
 {
@@ -1384,6 +1397,11 @@ static int pl_disable_vote_callback(struct votable *votable,
 	total_fcc_ua = get_effective_result_locked(chip->fcc_votable);
 
 	if (chip->pl_mode != POWER_SUPPLY_PL_NONE && !pl_disable) {
+		/* keep system awake to talk to slave charger through i2c */
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+		cancel_delayed_work_sync(&chip->pl_awake_work);
+		vote(chip->pl_awake_votable, PL_VOTER, true, 0);
+#endif
 		rc = validate_parallel_icl(chip, &disable);
 		if (rc < 0)
 			return rc;
@@ -1541,6 +1559,12 @@ static int pl_disable_vote_callback(struct votable *votable,
 		}
 
 		rerun_election(chip->fv_votable);
+
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+		cancel_delayed_work_sync(&chip->pl_awake_work);
+		schedule_delayed_work(&chip->pl_awake_work,
+						msecs_to_jiffies(5000));
+#endif
 	}
 
 	/* notify parallel state change */
@@ -1951,6 +1975,9 @@ int qcom_batt_init(struct charger_param *chg_param)
 	INIT_DELAYED_WORK(&chip->status_change_work, status_change_work);
 	INIT_WORK(&chip->pl_taper_work, pl_taper_work);
 	INIT_WORK(&chip->pl_disable_forever_work, pl_disable_forever_work);
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	INIT_DELAYED_WORK(&chip->pl_awake_work, pl_awake_work);
+#endif
 	INIT_DELAYED_WORK(&chip->fcc_stepper_work, fcc_stepper_work);
 
 	chip->fcc_main_votable = create_votable("FCC_MAIN", VOTE_MIN,
@@ -2077,6 +2104,9 @@ void qcom_batt_deinit(void)
 	cancel_delayed_work_sync(&chip->status_change_work);
 	cancel_work_sync(&chip->pl_taper_work);
 	cancel_work_sync(&chip->pl_disable_forever_work);
+#if (defined CONFIG_MACH_XIAOMI_F10) || (defined CONFIG_MACH_XIAOMI_G7B)
+	cancel_delayed_work_sync(&chip->pl_awake_work);
+#endif
 	cancel_delayed_work_sync(&chip->fcc_stepper_work);
 
 	power_supply_unreg_notifier(&chip->nb);
