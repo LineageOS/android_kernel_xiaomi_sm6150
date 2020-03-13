@@ -329,7 +329,7 @@ hdd_enable_disable_apf(struct hdd_adapter *adapter, bool apf_enable)
 	}
 
 	adapter->apf_context.apf_enabled = apf_enable;
-
+    */
 	return 0;
 }
 
