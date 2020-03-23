@@ -9,8 +9,7 @@ endif
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-4.19
-	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	AUDIO_ROOT := techpack/audio
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
@@ -70,12 +69,14 @@ ifdef CONFIG_TAS25XX_ALGO
 	TAS256X_OBJS += tas25xx-algo.o tas25xx-calib.o
 endif
 
-LINUX_INC +=	-Iinclude/linux
+LINUX_INC +=	-Iinclude/linux -Iinc
 
 INCS +=		$(COMMON_INC) \
-		$(UAPI_INC)
+		$(UAPI_INC) \
+		$(LINUX_INC)
 
 EXTRA_CFLAGS += $(INCS)
+ccflags-y += $(INCS)
 
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
