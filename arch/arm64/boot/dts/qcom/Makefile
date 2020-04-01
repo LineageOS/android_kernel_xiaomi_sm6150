@@ -23,6 +23,9 @@ toco-sdmmagpie-overlay.dtbo-base := xiaomi-sdmmagpie.dtb
 
 dtbo-$(CONFIG_MACH_XIAOMI_TUCANA) += tucana-sdmmagpie-overlay.dtbo
 tucana-sdmmagpie-overlay.dtbo-base := xiaomi-sdmmagpie.dtb
+
+dtbo-$(CONFIG_MACH_XIAOMI_VIOLET) += violet-sm6150-overlay.dtbo
+violet-sm6150-overlay.dtbo-base := violet-sm6150.dtb
 endif
 else
 # SPDX-License-Identifier: GPL-2.0
