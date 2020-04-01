@@ -1,0 +1,14 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of violet
+ * And public attribution of Xiaomi platforms (like F7B and so)
+ */
+
+&blue_led {
+    status = "disabled";
+};
+
+&green_led {
+    status = "disabled";
+};
