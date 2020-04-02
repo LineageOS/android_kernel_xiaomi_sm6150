@@ -1,0 +1,82 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of tucana
+ * And public attribution of Xiaomi platforms (like F4 and so)
+ */
+
+#include "../common/xiaomi-sdmmagpie-touchscreen.dtsi"
+
+&soc {
+  touch_vddio_vreg: touch_vddio_vreg {
+    compatible = "regulator-fixed";
+    regulator-name = "disp_vddio_vreg";
+    startup-delay-us = <4000>;
+    enable-active-high;
+    regulator-boot-on;
+    gpio = <&tlmm 72 0>;
+  };
+};
+
+&qupv3_se7_i2c{
+  status = "ok";
+  fts@49 {
+    compatible = "st,fts";
+    reg = <0x49>;
+    interrupt-parent = <&tlmm>;
+    interrupts = <9 0x2008>;
+    pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
+    pinctrl-0 = <&ts_active>;
+    pinctrl-1 = <&ts_int_suspend &ts_reset_suspend>;
+    vdd-supply = <&touch_vddio_vreg>;
+    avdd-supply = <&pm6150l_l6>;
+    fts,pwr-reg-name = "avdd";
+    fts,bus-reg-name = "vdd";
+    fts,irq-gpio = <&tlmm 9 0x2008>;
+    fts,irq-gpio-name = "fts_irq";
+    fts,reset-gpio-enable;
+    fts,reset-gpio = <&tlmm 8 0x00>;
+    fts,reset-gpio-name = "fts_rst";
+    fts,irq-flags = <0x2008>; /* IRQF_ONESHOT | IRQF_TRIGGER_LOW */
+    fts,x-max = <1080>;
+    fts,y-max = <2340>;
+    fts,default-fw-name = "st_fts_f4.ftb";
+    fts,config-array-size = <1>;
+    fts,dump-click-count;
+    fts,touch-up-threshold-min = <40>;
+    fts,touch-up-threshold-max = <120>;
+    fts,touch-up-threshold-def = <80>;
+    fts,touch-tolerance-min = <5>;
+    fts,touch-tolerance-max = <35>;
+    fts,touch-tolerance-def = <25>;
+    fts,edgefilter-leftrigt-def = <48>;
+    fts,edgefilter-topbottom-def = <0>;
+    fts,edgefilter-top-ingamemode = <20>;
+    fts,edgefilter-bottom-ingamemode = <20>;
+    fts,vertical-corner-threshold = <150>;
+    fts,horizontal-corner-threshold = <250>;
+    fts,edgefilter-area-step1 = <100>;
+    fts,edgefilter-area-step2 = <150>;
+    fts,edgefilter-area-step3 = <250>;
+    fts,touch-idletime-min = <0>;
+    fts,touch-idletime-max = <12750>;
+    fts,touch-idletime-def = <12450>;
+    fts,cfg_0 {
+      fts,tp-vendor = <0x51>;
+      fts,fw-name = "st_fts_f4.ftb";
+      fts,limit-name = "stm_fts_production_limits.csv";
+      fts,clicknum-file-name = "fts+sdc";
+    };
+  };
+};
+
+&gt9886 {
+  goodix,avdd-gpio = <&tlmm 72 0x0>;      /* 1v8 */
+  goodix,cfg-name = "goodix_gt9886_cfg_f4.bin";
+  sensor0 {
+      goodix,fw-name = "goodix_gt9886_fw_f4.bin";
+  };
+  sensor1 {
+      goodix,fw-name = "goodix_gt9886_fw_f4.bin";
+  };
+};

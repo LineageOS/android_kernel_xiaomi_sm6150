@@ -1,0 +1,19 @@
+/*
+this file is for attribution only of tucana 
+And public attribution of xiaomi platforms(like F4 and so and)
+*/
+
+#include "../common/xiaomi-sdmmagpie-common.dtsi"
+#include "../common/xiaomi-sdmmagpie-ir.dtsi"
+
+#include "tucana-sdmmagpie-audio.dtsi"
+#include "tucana-sdmmagpie-battery.dtsi"
+#include "tucana-sdmmagpie-camera-sensor.dtsi"
+#include "tucana-sdmmagpie-display.dtsi"
+#include "tucana-sdmmagpie-fingerprint.dtsi"
+#include "tucana-sdmmagpie-haptics.dtsi"
+#include "tucana-sdmmagpie-leds.dtsi"
+#include "tucana-sdmmagpie-pinctrl.dtsi"
+#include "tucana-sdmmagpie-regulator.dtsi"
+#include "tucana-sdmmagpie-touchscreen.dtsi"
+#include "tucana-sdmmagpie-usb.dtsi"

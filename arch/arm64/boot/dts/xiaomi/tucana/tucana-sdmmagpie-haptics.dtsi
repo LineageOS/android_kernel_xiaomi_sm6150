@@ -1,0 +1,37 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of tucana
+ * And public attribution of Xiaomi platforms (like F4 and so)
+ */
+
+&pm6150l_gpios {
+	drv260x_pwm {
+		drv260x_pwm_default: drv260x_pwm_default {
+			pins = "gpio10";
+			function = "normal";
+			power-source = <0>;
+			output-low;
+			input-disable;
+		};
+	};
+};
+
+
+&qupv3_se4_i2c {
+	status = "ok";
+	drv2605l@5a {
+		compatible = "ti,drv2605l";
+		reg = <0x5a>;
+		drv260x,enable-gpio = <&tlmm 4 0x00>;
+		mode = <1>;
+		library-sel = <6>;
+		vib-rated-mv = <3200>;
+		vib-overdriver-mv = <3200>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&drv260x_pwm_default>;
+		drv260x,pwm-gpio = <&pm6150l_gpios 10 0x00>;
+		status = "ok";
+	};
+};
+

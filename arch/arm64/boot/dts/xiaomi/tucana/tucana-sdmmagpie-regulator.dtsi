@@ -1,0 +1,4 @@
+&L11A {
+	regulator-min-microvolt = <1616000>;
+	qcom,init-voltage = <1616000>;
+};

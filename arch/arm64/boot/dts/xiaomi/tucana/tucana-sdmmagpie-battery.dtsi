@@ -1,0 +1,195 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of tucana
+ * And public attribution of Xiaomi platforms (like F4 and so)
+ */
+
+#include <dt-bindings/iio/qcom,spmi-vadc.h>
+
+&soc {
+    mtp_batterydata: qcom,battery-data {
+        qcom,batt-id-range-pct = <15>;
+        #include "battery/batterydata-F4-sunwoda-5000mah.dtsi"
+        #include "battery/batterydata-F4-sunwoda-5270mah.dtsi"
+    };
+
+    onewire_gpio: onewire_gpio{
+        compatible = "xiaomi,onewire_gpio";
+        label = "xm_onewire";
+        xiaomi,version = <1>;
+        xiaomi,ow_gpio = <&tlmm 94 0x00>;
+        mi,onewire-gpio-cfg-addr = <0x03D5E000 0x4>;
+        pinctrl-names = "onewire_active", "onewire_sleep";
+        pinctrl-0 = <&onewire_gpio_active>;
+        pinctrl-1 = <&onewire_gpio_sleep>;
+        status = "ok";
+    };
+
+    maxim_ds28e16: maxim_ds28e16{
+        compatible = "maxim,ds28e16";
+        label = "max_ds28e16";
+        maxim,version = <1>;
+        status = "ok";
+    };
+
+    cp_qc30 {
+        compatible = "xiaomi,cp-qc30";
+        status = "ok";
+        mi,qc3-bat-volt-max = <4400>;
+        mi,qc3-bat-curr-max = <6000>;
+        mi,qc3-bus-volt-max = <12000>;
+        mi,qc3-bus-curr-max = <2100>;
+    };
+};
+
+&qupv3_se9_i2c {
+    status = "ok";
+    qcom,clk-freq-out = <100000>;
+    qcom,clk-freq-in = <100000>;
+
+    bq25970-standalone@66 {
+        compatible = "ti,bq2597x-standalone";
+        reg = <0x66>;
+
+        interrupt-parent = <&tlmm>;
+        interrupts = <58 0x2002>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&bq2597x_int_default &bq2597x_int_suspend>;
+
+        /*ti,bq2597x,bat-ovp-disable;*/
+        ti,bq2597x,bat-ovp-alarm-disable;
+        ti,bq2597x,bat-ocp-disable;
+        ti,bq2597x,bat-ocp-alarm-disable;
+        ti,bq2597x,bat-ucp-alarm-disable;
+        ti,bq2597x,bat-ucp-disable;
+
+        /*ti,bq2597x,bus-ovp-alarm-disable;
+        ti,bq2597x,bus-ocp-disable;
+        ti,bq2597x,bus-ocp-alarm-disable;*/
+        ti,bq2597x,bat-therm-disable;
+        ti,bq2597x,bus-therm-disable;
+        ti,bq2597x,die-therm-disable;
+
+        ti,bq2597x,bat-ovp-threshold = <4480>;
+        ti,bq2597x,bat-ovp-alarm-threshold = <4450>;
+        //ti,bq2597x,bat-ocp-threshold = <5000>;
+        //ti,bq2597x,bat-ocp-alarm-threshold = <4500>;
+
+        ti,bq2597x,bus-ovp-threshold = <12000>;
+        ti,bq2597x,bus-ovp-alarm-threshold = <11000>;
+        //ti,bq2597x,bus-ocp-threshold = <2200>;
+        //ti,bq2597x,bus-ocp-alarm-threshold = <2000>;
+        ti,bq2597x,bus-ocp-threshold = <3500>;
+        ti,bq2597x,bus-ocp-alarm-threshold = <3000>;
+
+        //ti,bq2597x,bat-ucp-alarm-threshold = <2000>;
+
+        ti,bq2597x,bat-therm-threshold = <0x15>;/*4.1%*/
+        ti,bq2597x,bus-therm-threshold = <0x15>;/*4.1%*/
+        ti,bq2597x,die-therm-threshold = <145>;
+
+        ti,bq2597x,ac-ovp-threshold = <13>;
+        //ti,bq2597x,sense-resistor-mohm = <2>;
+    };
+};
+
+&pm6150_qg {
+    qcom,battery-data = <&mtp_batterydata>;
+    qcom,vbatt-cutoff-mv = <3400>;
+    qcom,vbatt-low-mv = <3500>;
+    qcom,vbatt-low-cold-mv = <3800>;
+    qcom,vbatt-empty-mv = <3100>;
+    qcom,vbatt-empty-cold-mv = <3000>;
+    qcom,s3-entry-fifo-length = <2>;
+    qcom,s3-entry-ibat-ua = <25000>;
+    qcom,s3-exit-ibat-ua = <45000>;
+    qcom,qg-iterm-ma = <350>;
+    qcom,hold-soc-while-full;
+    qcom,linearize-soc;
+    qcom,cl-feedback-on;
+    qcom,shutdown-soc-threshold = <10>;
+    qcom,qg-ext-sns;
+};
+
+&pm6150_pdphy {
+    mi,non-qcom-pps-ctrl;
+};
+
+&pm6150_charger {
+    io-channels = <&pm6150_vadc ADC_USB_IN_V_16>,
+                    <&pm6150_vadc ADC_USB_IN_I>,
+                    <&pm6150_vadc ADC_CHG_TEMP>,
+                    <&pm6150_vadc ADC_DIE_TEMP>,
+                    <&pm6150l_vadc ADC_AMUX_THM1_PU2>,
+                    <&pm6150_vadc ADC_SBUx>,
+                    <&pm6150_vadc ADC_VPH_PWR>;
+    io-channel-names = "usb_in_voltage",
+                 "usb_in_current",
+                 "chg_temp",
+                 "die_temp",
+                 "conn_temp",
+                 "sbux_res",
+                 "vph_voltage";
+    qcom,battery-data = <&mtp_batterydata>;
+    qcom,usb-icl-ua = <3000000>;
+    qcom,fcc-max-ua = <5900000>;
+    mi,fcc-batt-unverify-ua = <2000000>;
+    qcom,fv-max-uv = <4450000>;
+    qcom,auto-recharge-soc = <99>;
+    qcom,chg-term-src = <1>;
+    qcom,chg-term-current-ma = <(-200)>;
+    qcom,sec-charger-config = <0>;
+
+    qcom,thermal-mitigation = <5900000 5000000 4500000 4000000 3500000 3000000 2900000
+                     2800000 2600000 2400000 2200000 2000000 1800000 1500000
+                     1000000 500000>;
+    qcom,thermal-mitigation-icl
+                 = <3000000 3000000 3000000 2400000 2200000 2100000 2000000
+                     2000000 2000000 1900000 1800000 1600000 1500000 1300000
+                     1000000 750000>;
+    qcom,thermal-mitigation-dcp
+                = <1800000 1800000 1800000 1800000 1800000 1800000 1800000
+                     1800000 1800000 1700000 1600000 1400000 1200000 1100000
+                     1100000 1000000>;
+    qcom,thermal-mitigation-qc2
+                = <1500000 1500000 1500000 1500000 1450000 1400000 1350000
+                     1300000 1150000 1100000 1000000 900000 850000 750000
+                     650000 500000>;
+    qcom,thermal-fcc-qc3-normal
+                = <5900000 5000000 4500000 4000000 3500000 3000000 2900000
+                     2800000 2700000 2600000 2400000 2200000 2000000 2000000
+                     750000 700000>;
+    qcom,thermal-fcc-qc3-cp
+                = <5900000 5000000 4500000 4000000 3500000 3300000 3200000
+                     3100000 3000000 2800000 2600000 2400000 2200000 2000000
+                     2000000 200000>;
+    qcom,thermal-mitigation-pd-base
+                = <5900000 5000000 4500000 4000000 3400000 3300000 3200000
+                     3100000 3000000 2800000 2600000 2400000 2200000 2000000
+                     1000000 700000>;
+    qcom,thermal-fcc-pps-cp
+                = <5900000 5500000 5000000 4500000 4000000 3500000 3200000
+                     3000000 3000000 2600000 2400000 2200000 2200000 2000000
+                     1000000 700000>;
+    dpdm-supply = <&qusb_phy0>;
+    qcom,sw-jeita-enable;
+    qcom,step-charging-enable;
+    qcom,distinguish-qc-class-ab;
+    qcom,lpd-disable;
+    qcom,usbpd-phandle = <&pm6150_pdphy>;
+    mi,use-bq-pump;
+};
+
+&pm6150_gpios {
+    smb_stat {
+        smb_stat_default: smb_stat_default {
+            pins = "gpio3";
+            function = "normal";
+            input-enable;
+            bias-pull-up;
+            qcom,pull-up-strength = <PMIC_GPIO_PULL_UP_30>;
+            power-source = <0>;
+        };
+    };
+};

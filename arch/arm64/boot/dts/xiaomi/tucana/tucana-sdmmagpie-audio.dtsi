@@ -1,0 +1,41 @@
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&sm6150_snd {
+    qcom,audio-routing =
+        "AMIC2", "MIC BIAS2",
+        "MIC BIAS2", "Analog Mic2",
+        "AMIC1", "MIC BIAS1",
+        "MIC BIAS1", "Analog Mic1",
+        "AMIC3", "MIC BIAS3",
+        "MIC BIAS3", "Analog Mic3",
+        "AMIC4", "MIC BIAS3",
+        "TX_AIF1 CAP", "VA_MCLK",
+        "TX_AIF2 CAP", "VA_MCLK",
+        "RX AIF1 PB", "VA_MCLK",
+        "RX AIF2 PB", "VA_MCLK",
+        "RX AIF3 PB", "VA_MCLK",
+        "RX AIF4 PB", "VA_MCLK",
+        "HPHL_OUT", "VA_MCLK",
+        "HPHR_OUT", "VA_MCLK",
+        "AUX_OUT", "VA_MCLK",
+        "IN1_HPHL", "HPHL_OUT",
+        "IN2_HPHR", "HPHR_OUT",
+        "IN3_AUX", "AUX_OUT",
+        "TX SWR_ADC0", "ADC1_OUTPUT",
+        "TX SWR_ADC2", "ADC2_OUTPUT",
+        "RX_TX DEC0_INP", "TX DEC0 MUX",
+        "RX_TX DEC1_INP", "TX DEC1 MUX",
+        "RX_TX DEC2_INP", "TX DEC2 MUX",
+        "RX_TX DEC3_INP", "TX DEC3 MUX";
+};

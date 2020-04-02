@@ -1,0 +1,51 @@
+/*
+ * Copyright (C) 2020 The LineageOS Project
+ *
+ * this file is for attribution only of tucana
+ * And public attribution of Xiaomi platforms (like F4 and so)
+ */
+
+&soc {
+    usbpd_pm {
+        compatible = "xiaomi,usbpd-pm";
+        status = "ok";
+        mi,pd-bat-volt-max = <0x1130>;
+        mi,pd-ffc-bat-volt-max = <0x1162>;
+        mi,pd-bat-curr-max = <0x1770>;
+        mi,pd-bus-volt-max = <0x2ee0>;
+        mi,pd-bus-curr-max = <0xbb8>;
+        mi,pd-bus-curr-compensate = <0x64>;
+    };
+};
+
+&sde_dp {
+	status = "disabled";
+	qcom,dp-usbpd-detection = <&pm6150_pdphy>;
+};
+
+&qusb_phy0 {
+	qcom,qusb-phy-init-seq =
+        /* <value reg_offset> */
+        <0x23 0x210 /* PWR_CTRL1 */
+        0x03 0x04  /* PLL_ANALOG_CONTROLS_TWO */
+        0x7c 0x18c /* PLL_CLOCK_INVERTERS */
+        0x80 0x2c  /* PLL_CMODE */
+        0x0a 0x184 /* PLL_LOCK_DELAY */
+        0x19 0xb4  /* PLL_DIGITAL_TIMERS_TWO */
+        0x40 0x194 /* PLL_BIAS_CONTROL_1 */
+        0x20 0x198 /* PLL_BIAS_CONTROL_2 */
+        0x21 0x214 /* PWR_CTRL2 */
+        0x08 0x220 /* IMP_CTRL1 */
+        0x58 0x224 /* IMP_CTRL2 */
+        0x07 0x240 /* TUNE1 */
+        0x29 0x244 /* TUNE2 */
+        0xca 0x248 /* TUNE3 */
+        0x07 0x24c /* TUNE4 */
+        0x03 0x250 /* TUNE5 */
+        0x30 0x23c /* CHG_CTRL2 */
+        0x22 0x210>; /* PWR_CTRL1 */
+        mi,efuse-pll-bias;
+        mi,efuse-pll-bias-seq = <1 0x20>;
+        mi,efuse-pll-bias-host;
+        mi,efuse-pll-bias-seq-host = <1 0x20>;
+};
