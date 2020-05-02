@@ -486,6 +486,9 @@ exit:
 	return rc;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_F7B
+extern bool enable_gesture_mode;
+#endif
 static int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -498,7 +501,11 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 			if (gpio_is_valid(panel->reset_config.reset_gpio))
 				gpio_set_value(panel->reset_config.reset_gpio, 0);
 		}
+#ifdef CONFIG_MACH_XIAOMI_F7B
+	} else if (!enable_gesture_mode) {
+#else
 	} else {
+#endif
 		if (gpio_is_valid(panel->reset_config.reset_gpio))
 			gpio_set_value(panel->reset_config.reset_gpio, 0);
 	}
@@ -3524,6 +3531,9 @@ end:
 	utils->node = panel->panel_of_node;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_F7B
+extern char g_lcd_id[128];
+#endif
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				struct device_node *parser_node,
@@ -3560,6 +3570,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (panel_physical_type && !strcmp(panel_physical_type, "oled"))
 		panel->panel_type = DSI_DISPLAY_PANEL_TYPE_OLED;
 
+#ifdef CONFIG_MACH_XIAOMI_F7B
+	strcpy(g_lcd_id,panel->name);
+#endif
 	rc = dsi_panel_parse_host_config(panel);
 	if (rc) {
 		pr_err("failed to parse host configuration, rc=%d\n", rc);
