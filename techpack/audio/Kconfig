@@ -1,0 +1,11 @@
+menu "Techpack audio options"
+
+config SND_SOC_TAS2563
+	tristate "SND_SOC_TAS2563"
+config TAS2563_CODEC
+	tristate "TAS2653_CODEC"
+config TAS2563_MISC
+	tristate "TAS2653_MISC"
+config TAS2563_REGMAP
+	tristate "TAS2653_REGMAP"
+endmenu
