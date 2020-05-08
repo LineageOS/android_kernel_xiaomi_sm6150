@@ -14,6 +14,7 @@ source "drivers/input/touchscreen/goodix_driver_gt9886/Kconfig"
 source "drivers/input/touchscreen/fts_521/Kconfig"
 source "drivers/input/touchscreen/nt36672c/Kconfig"
 source "drivers/input/touchscreen/ft8719_touch_f7b/Kconfig"
+source "drivers/input/touchscreen/nvt_touch_f7b/Kconfig"
 source "drivers/input/touchscreen/xiaomi/Kconfig"
 
 config TOUCHSCREEN_TDDI_DBCLK
