@@ -16,3 +16,17 @@
 #include "davinci-sdmmagpie-motor.dtsi"
 #include "davinci-sdmmagpie-pinctrl.dtsi"
 #include "davinci-sdmmagpie-touchscreen.dtsi"
+
+&firmware {
+    android {
+        fstab {
+            product {
+              compatible = "android,product";
+              dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/cust";
+              type = "ext4";
+              mnt_flags = "ro,noatime,nodev,barrier=1";
+              fsmgr_flags = "wait";
+            };
+        };
+    };
+};
