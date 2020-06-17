@@ -121,6 +121,10 @@
 				qcom,mdss-dsi-cabc_still-on-command = [
 				39 01 00 00 00 00 02 55 02
 				];
+	                        qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command = [15 01 00 00 00 00 02 53 2c 15 01 00 00 00 00 02 51 cc];
+				qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command = [15 01 00 00 00 00 02 53 2c 15 01 00 00 00 00 02 51 e6];
+				qcom,mdss-dsi-dispparam-lcd-hbm-l3-on-command = [15 01 00 00 00 00 02 53 2c 15 01 00 00 00 00 02 51 ff];
+				qcom,mdss-dsi-dispparam-lcd-hbm-off-command = [15 01 00 00 00 00 02 53 2c 15 01 00 00 00 00 02 51 b8];
 				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-off-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-cabc-on-command-state = "dsi_hs_mode";
@@ -131,6 +135,10 @@
 				qcom,mdss-dsi-srgb-off-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-cabc_movie-on-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-cabc_still-on-command-state = "dsi_hs_mode";
+				qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command-state = "dsi_hs_mode";
+				qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command-state = "dsi_hs_mode";
+				qcom,mdss-dsi-dispparam-lcd-hbm-l3-on-command-state = "dsi_hs_mode";
+				qcom,mdss-dsi-dispparam-lcd-hbm-off-command-state = "dsi_hs_mode";
 			};
 		};
 	};
