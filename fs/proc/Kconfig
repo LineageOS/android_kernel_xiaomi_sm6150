@@ -88,3 +88,10 @@ config PROC_UID
 	depends on PROC_FS && RT_MUTEXES
 	help
 	Provides aggregated per-uid information under /proc/uid.
+
+config PROC_PATCH_CMDLINE
+	default n
+	depends on PROC_FS
+	bool "Patch /proc/cmdline for NFC" if EXPERT
+	help
+	  Patch cmdline, helps mark variants with different SKU values
