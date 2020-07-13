@@ -30,8 +30,11 @@ int avtimer_init(void);
 int msm_mdf_init(void);
 void msm_mdf_exit(void);
 #else
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH
 int elliptic_driver_init(void);
+#endif
+#ifdef CONFIG_US_PROXIMITY
+int mius_driver_init(void);
 #endif
 static inline int msm_mdf_init(void)
 {
@@ -68,8 +71,11 @@ void q6asm_exit(void);
 void afe_exit(void);
 void adm_exit(void);
 void adsp_err_exit(void);
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH
 int elliptic_driver_exit(void);
+#endif
+#ifdef CONFIG_US_PROXIMITY
+int mius_driver_exit(void);
 #endif
 
 #ifdef CONFIG_VOICE_MHI

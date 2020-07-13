@@ -43,6 +43,10 @@
 #include <dsp/apr_elliptic.h>
 #include <elliptic/elliptic_mixer_controls.h>
 #endif
+#ifdef CONFIG_US_PROXIMITY
+#include <dsp/apr_mius.h>
+#include <mius/mius_mixer_controls.h>
+#endif
 
 #include "msm-pcm-routing-v2.h"
 #include "msm-pcm-routing-devdep.h"
@@ -24061,6 +24065,9 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 
 #ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH
 	elliptic_add_platform_controls(platform);
+#endif
+#ifdef CONFIG_US_PROXIMITY
+	mius_add_platform_controls(platform);
 #endif
 	return 0;
 }
