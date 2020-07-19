@@ -26,7 +26,7 @@
 #include <dsp/q6common.h>
 #include <dsp/q6core.h>
 #include <dsp/msm-audio-event-notify.h>
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH
 #include <dsp/apr_elliptic.h>
 #endif
 #include <ipc/apr_tal.h>
@@ -634,7 +634,7 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		atomic_set(&this_afe.state, 0);
 		atomic_set(&this_afe.status, 0);
 		wake_up(&this_afe.lpass_core_hw_wait);
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH
 	} else if (data->opcode == ULTRASOUND_OPCODE) {
 		if (NULL != data->payload)
 			elliptic_process_apr_payload(data->payload);
@@ -1780,7 +1780,7 @@ fail_idx:
 	kfree(config);
 	return ret;
 }
-#ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
+#ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH
 afe_ultrasound_state_t elus_afe = {
 	.ptr_apr= &this_afe.apr,
 	.ptr_status= &this_afe.status,

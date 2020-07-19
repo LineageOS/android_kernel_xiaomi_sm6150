@@ -95,6 +95,10 @@ struct wcd937x_priv {
 #ifdef CONFIG_MACH_XIAOMI_SDMMAGPIE
 	int ear_rx_path;
 #endif
+#ifdef CONFIG_SND_SOC_FOR_ULTRASOUND_PATH
+	int ana_adc_count; //for wcd937x_codec_enable_adc
+	int ana_tx_req_count; //for wcd937x_enable_req
+#endif
 	int ana_clk_count;
 	struct mutex ana_tx_clk_lock;
 };
