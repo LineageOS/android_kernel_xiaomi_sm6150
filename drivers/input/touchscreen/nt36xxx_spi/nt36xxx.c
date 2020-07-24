@@ -60,11 +60,6 @@ extern int32_t nvt_extra_proc_init(void);
 extern void nvt_extra_proc_deinit(void);
 #endif
 
-#if NVT_TOUCH_MP
-extern int32_t nvt_mp_proc_init(void);
-extern void nvt_mp_proc_deinit(void);
-#endif
-
 /*2019.12.06 longcheer taocheng add charger mode begin*/
 /*function description*/
 #if NVT_USB_PLUGIN
@@ -2436,14 +2431,6 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 	}
 #endif
 
-#if NVT_TOUCH_MP
-	ret = nvt_mp_proc_init();
-	if (ret != 0) {
-		NVT_ERR("nvt mp proc init failed. ret=%d\n", ret);
-		goto err_mp_proc_init_failed;
-	}
-#endif
-
 	//create longcheer procfs node
 	ret = init_lct_tp_info("[Vendor]unknown,[FW]unknown,[IC]unknown\n", NULL);
 	if (ret < 0) {
@@ -2626,10 +2613,6 @@ uninit_lct_tp_gesture();
 #endif
 err_init_lct_tp_info_failed:
 uninit_lct_tp_info();
-#if NVT_TOUCH_MP
-nvt_mp_proc_deinit();
-err_mp_proc_init_failed:
-#endif
 #if NVT_TOUCH_EXT_PROC
 nvt_extra_proc_deinit();
 err_extra_proc_init_failed:
@@ -2739,9 +2722,6 @@ static int32_t nvt_ts_remove(struct spi_device *client)
 #endif
 	uninit_lct_tp_info();
 
-#if NVT_TOUCH_MP
-	nvt_mp_proc_deinit();
-#endif
 #if NVT_TOUCH_EXT_PROC
 	nvt_extra_proc_deinit();
 #endif
@@ -2834,9 +2814,6 @@ static void nvt_ts_shutdown(struct spi_device *client)
 #endif
 	uninit_lct_tp_info();
 
-#if NVT_TOUCH_MP
-	nvt_mp_proc_deinit();
-#endif
 #if NVT_TOUCH_EXT_PROC
 	nvt_extra_proc_deinit();
 #endif
