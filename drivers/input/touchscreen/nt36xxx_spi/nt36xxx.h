@@ -31,16 +31,10 @@
 
 #include "nt36xxx_mem_map.h"
 
-// include longcheer header
-#include "../lct_tp_info.h"
-#include "../lct_tp_selftest.h"
-#include "../lct_tp_gesture.h"
-#include "../lct_tp_grip_area.h"
-#include "../lct_tp_work.h"
-#include "../lct_tp_palm.h"
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 #include "../xiaomi/xiaomi_touch.h"
 #endif
+
 #define NVT_DEBUG 1
 
 //---GPIO number---
@@ -89,7 +83,6 @@ extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #if WAKEUP_GESTURE
 extern const uint16_t gesture_key_array[];
 #endif
-#define LCT_TP_PALM_EN		1
 #define BOOT_UPDATE_FIRMWARE 1
 #define FIRMWARE_NAME_LEN    256
 #define BOOT_UPDATE_FIRMWARE_NAME         "novatek_ts_fw.bin"
@@ -107,12 +100,6 @@ extern const uint16_t gesture_key_array[];
 
 //enable 'check touch vendor' feature
 #define CHECK_TOUCH_VENDOR
-
-//enable tp work feature
-#define LCT_TP_WORK_EN      1
-
-//enable tp grip area feature
-#define LCT_TP_GRIP_AREA_EN		1
 
 /*2019.12.06 longcheer taocheng add for charger mode begin*/
 /*functions description*/
