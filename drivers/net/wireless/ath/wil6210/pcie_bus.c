@@ -641,6 +641,7 @@ static int wil6210_suspend(struct device *dev, bool is_runtime)
 
 	rc = wil_suspend(wil, is_runtime, keep_radio_on);
 	if (!rc) {
+		wil->suspend_stats.successful_suspends++;
 		/* In case radio stays on, platform device will control
 		 * PCIe master
 		 */
@@ -684,6 +685,7 @@ static int wil6210_resume(struct device *dev, bool is_runtime)
 	rc = wil_resume(wil, is_runtime, keep_radio_on);
 	if (rc) {
 		wil_err(wil, "device failed to resume (%d)\n", rc);
+		wil->suspend_stats.failed_resumes++;
 		if (!keep_radio_on) {
 			pci_clear_master(pdev);
 			wil->suspend_stats.r_off.failed_resumes++;

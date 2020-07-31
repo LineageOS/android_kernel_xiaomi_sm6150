@@ -255,9 +255,10 @@ static int __fw_handle_data(struct wil6210_priv *wil, const void *data,
 		return -EINVAL;
 	}
 
-	if (!wil_fw_addr_check(wil, &dst, addr, s, "address"))
+	if (!wil_fw_addr_check(wil, &dst, d->addr, s, "address"))
 		return -EINVAL;
-	wil_dbg_fw(wil, "write [0x%08x] <== %zu bytes\n", le32_to_cpu(addr), s);
+	wil_dbg_fw(wil, "write [0x%08x] <== %zu bytes\n", le32_to_cpu(d->addr),
+		   s);
 	wil_memcpy_toio_32(dst, d->data, s);
 	wmb(); /* finish before processing next record */
 
