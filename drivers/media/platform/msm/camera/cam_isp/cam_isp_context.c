@@ -1233,7 +1233,9 @@ static int __cam_isp_ctx_reg_upd_in_sof(struct cam_isp_context *ctx_isp,
 	struct cam_ctx_request *req = NULL;
 	struct cam_isp_ctx_req *req_isp = NULL;
 	struct cam_context *ctx = ctx_isp->base;
+#if !((defined CONFIG_MACH_XIAOMI_F4) || (defined CONFIG_MACH_XIAOMI_G7B))
 	struct cam_isp_hw_reg_update_event_data  *rup_event_data = evt_data;
+#endif
 
 	if (ctx->state != CAM_CTX_ACTIVATED && ctx_isp->frame_id > 1) {
 		CAM_DBG(CAM_ISP, "invalid RUP");
@@ -1256,6 +1258,7 @@ static int __cam_isp_ctx_reg_upd_in_sof(struct cam_isp_context *ctx_isp,
 				"receive rup in unexpected state");
 	}
 
+#if !((defined CONFIG_MACH_XIAOMI_F4) || (defined CONFIG_MACH_XIAOMI_G7B))
 	if (req_isp && req_isp->hw_update_data.fps)
 		ctx_isp->fps = req_isp->hw_update_data.fps;
 
@@ -1272,6 +1275,7 @@ static int __cam_isp_ctx_reg_upd_in_sof(struct cam_isp_context *ctx_isp,
 	}
 
 	ctx_isp->irq_timestamps = rup_event_data->irq_mono_boot_time;
+#endif
 end:
 	return rc;
 }
