@@ -6501,10 +6501,6 @@ static void smblib_raise_qc3_vbus_work(struct work_struct *work)
 	struct smb_charger *chg = container_of(work, struct smb_charger,
 						raise_qc3_vbus_work.work);
 
-	if (chg->sec_chg_selected == POWER_SUPPLY_CHARGER_SEC_NONE) {
-		return;
-	}
-
 	rc = smblib_get_prop_usb_present(chg, &val);
 	if (rc < 0) {
 		smblib_err(chg, "Couldn't get usb present rc = %d\n", rc);
