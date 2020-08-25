@@ -206,10 +206,10 @@ struct smb1390 {
 	int			taper_entry_fv;
 	bool			switcher_enabled;
 	int			die_temp;
+	int			min_ilim_ua;
 	bool			suspended;
 	bool			disabled;
 	u32			debug_mask;
-	u32			min_ilim_ua;
 	u32			max_temp_alarm_degc;
 	u32			max_cutoff_soc;
 	u32			pl_output_mode;
