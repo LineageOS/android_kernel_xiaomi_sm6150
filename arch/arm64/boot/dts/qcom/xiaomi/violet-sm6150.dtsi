@@ -48,3 +48,17 @@
 		touch,name = "xiaomi-touch";
 	};
 };
+
+&pm6150l_rgb_led {
+	red {
+		label = "white";
+	};
+
+	green {
+		label = "disabled";
+	};
+
+	blue {
+		label = "disabled";
+	};
+};
