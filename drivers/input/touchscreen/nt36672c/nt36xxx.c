@@ -1100,6 +1100,14 @@ static int32_t nvt_parse_dt(struct device *dev)
 			NVT_LOG("tp hw version: %u", config_info->display_maker);
 		}
 
+		ret = of_property_read_u32(temp, "novatek,panel-cg", &temp_val);
+		if (ret) {
+			NVT_LOG("Unable to read panel cg name\n");
+		} else {
+			config_info->panel_cg = (u8) temp_val;
+			NVT_LOG("cg_name: %s", config_info->panel_cg);
+		}
+
 		ret = of_property_read_string(temp, "novatek,fw-name",
 						 &config_info->nvt_fw_name);
 		if (ret && (ret != -EINVAL)) {
@@ -1116,15 +1124,6 @@ static int32_t nvt_parse_dt(struct device *dev)
 			NVT_LOG("mp_name: %s", config_info->nvt_mp_name);
 		}
 
-/*
-		ret = of_property_read_string(temp, "novatek,limit-name",
-						 &config_info->nvt_limit_name);
-		if (ret && (ret != -EINVAL)) {
-			NVT_LOG("Unable to read limit name\n");
-		} else {
-			NVT_LOG("limit_name: %s", config_info->nvt_limit_name);
-		}
-*/
 		config_info++;
 	}
 	return ret;
@@ -1140,6 +1139,30 @@ static int32_t nvt_parse_dt(struct device *dev)
 }
 #endif
 
+static int nvt_get_panel_type(struct nvt_ts_data *ts_data)
+{
+	int i;
+	u8 *lockdown = ts_data->lockdown_info;
+	struct nvt_config_info *panel_list = ts->config_array;
+
+	for (i = 0; i < ts->config_array_size; i++) {
+		if (lockdown[7] == panel_list[i].panel_cg) {
+			NVT_LOG("matched panel type, fw is [%s], mp is [%s]",
+				panel_list[i].nvt_fw_name, panel_list[i].nvt_mp_name);
+			break;
+		}
+	}
+
+	ts->panel_index = i;
+
+	if (i >= ts->config_array_size) {
+		NVT_ERR("mismatched panel type, using default fw");
+		ts->panel_index = -EINVAL;
+	}
+
+	return ts->panel_index;
+}
+
 bool is_lockdown_empty(u8 *lockdown)
 {
 	bool ret = true;
@@ -1153,11 +1176,19 @@ bool is_lockdown_empty(u8 *lockdown)
 
 	return ret;
 }
+
 void nvt_match_fw(void)
 {
 	NVT_LOG("start match fw name");
+	if (is_lockdown_empty(ts->lockdown_info))
+		flush_delayed_work(&ts->nvt_lockdown_work);
+	if (nvt_get_panel_type(ts) < 0) {
 		ts->fw_name = DEFAULT_BOOT_UPDATE_FIRMWARE_NAME;
 		ts->mp_name = DEFAULT_MP_UPDATE_FIRMWARE_NAME;
+	} else {
+		ts->fw_name = ts->config_array[ts->panel_index].nvt_fw_name;
+		ts->mp_name = ts->config_array[ts->panel_index].nvt_mp_name;
+	}
 }
 
 /*******************************************************
