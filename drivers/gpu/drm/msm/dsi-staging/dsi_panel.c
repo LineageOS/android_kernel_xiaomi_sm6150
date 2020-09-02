@@ -45,6 +45,8 @@
 #define DEFAULT_PANEL_PREFILL_LINES	25
 #define TICKS_IN_MICRO_SECOND		1000000
 
+static struct dsi_panel *g_panel;
+
 enum dsi_dsc_ratio_type {
 	DSC_8BPC_8BPP,
 	DSC_10BPC_8BPP,
@@ -3656,8 +3658,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	panel->doze_mode = DSI_DOZE_LPM;
 	panel->doze_enabled = false;
-
 	panel->power_mode = SDE_MODE_DPMS_OFF;
+
+	g_panel = panel;
+
 	drm_panel_init(&panel->drm_panel);
 	mutex_init(&panel->panel_lock);
 
@@ -4854,44 +4858,43 @@ static struct dsi_read_config read_reg;
 int dsi_panel_get_lockdowninfo_for_tp(unsigned char *plockdowninfo)
 {
 	int retval = 0, i = 0;
-	struct dsi_panel *panel;
 	struct dsi_panel_cmd_set cmd_sets = {0};
-	while(panel && !panel->cur_mode) {
-		pr_debug("[%s][%s] cur_mode is null\n", __func__, panel->name);
+	while(g_panel && !g_panel->cur_mode) {
+		pr_debug("[%s][%s] cur_mode is null\n", __func__, g_panel->name);
 		msleep_interruptible(1000);
 	}
 	//don't read lockdown info by mipi bus when the screen is off
-	while(!panel->panel_initialized) {
+	while(!g_panel->panel_initialized) {
 		msleep_interruptible(1000);
 	}
 
-	if(panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_READ_LOCKDOWN_INFO].cmds) {
-		mutex_lock(&panel->panel_lock);
+	if(g_panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_READ_LOCKDOWN_INFO].cmds) {
+		mutex_lock(&g_panel->panel_lock);
 
-		cmd_sets.cmds = panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_READ_LOCKDOWN_INFO].cmds;
+		cmd_sets.cmds = g_panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_READ_LOCKDOWN_INFO].cmds;
 		cmd_sets.count = 1;
-		cmd_sets.state = panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_READ_LOCKDOWN_INFO].state;
-		retval = dsi_display_write_panel(panel, &cmd_sets);
+		cmd_sets.state = g_panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_READ_LOCKDOWN_INFO].state;
+		retval = dsi_display_write_panel(g_panel, &cmd_sets);
 		if (retval) {
-			mutex_unlock(&panel->panel_lock);
-			pr_err("[%s][%s] failed to send cmds, rc=%d\n", __func__, panel->name, retval);
+			mutex_unlock(&g_panel->panel_lock);
+			pr_err("[%s][%s] failed to send cmds, rc=%d\n", __func__, g_panel->name, retval);
 			return EIO;
 		}
 		read_reg.enabled = 1;
 		read_reg.cmds_rlen = 8;
 		read_reg.read_cmd = cmd_sets;
 		read_reg.read_cmd.cmds = &cmd_sets.cmds[1];
-		retval = dsi_display_read_panel(panel, &read_reg);
+		retval = dsi_display_read_panel(g_panel, &read_reg);
 		if (retval <= 0) {
-			mutex_unlock(&panel->panel_lock);
-			pr_err("[%s][%s] failed to send cmds, rc=%d\n", __func__, panel->name, retval);
+			mutex_unlock(&g_panel->panel_lock);
+			pr_err("[%s][%s] failed to send cmds, rc=%d\n", __func__, g_panel->name, retval);
 			return EIO;
 		}
 		for(i = 0; i < 8; i++) {
 			pr_debug("[%s][%d]0x%x", __func__, __LINE__, read_reg.rbuf[i]);
 			plockdowninfo[i] = read_reg.rbuf[i];
 		}
-		mutex_unlock(&panel->panel_lock);
+		mutex_unlock(&g_panel->panel_lock);
 		return retval;
 	}
 	else {
