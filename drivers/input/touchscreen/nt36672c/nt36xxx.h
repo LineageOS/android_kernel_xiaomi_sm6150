@@ -116,9 +116,9 @@ struct nvt_config_info {
 	u8 tp_vendor;
 	u8 tp_color;
 	u8 display_maker;
+	u8 panel_cg;
 	const char *nvt_fw_name;
 	const char *nvt_mp_name;
-	const char *nvt_limit_name;
 };
 
 enum nvt_ic_state {
