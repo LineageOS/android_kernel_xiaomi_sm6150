@@ -181,14 +181,18 @@
         novatek,cfg_0 {
             novatek,tp-vendor = <0x41>;
             novatek,display-maker = <0x37>;
+            novatek,panel-cg = <0x00>;
             novatek,fw-name = "novatek_nt36672c_g7b_fw01.bin";
             novatek,mp-name = "novatek_nt36672c_g7b_mp01.bin";
+            novatek,clicknum-file-name = "nvt+ebbg";
         };
         novatek,cfg_1 {
-            novatek,tp-vendor = <0x46>;
-            novatek,display-maker = <0x36>;
+            novatek,tp-vendor = <0x41>;
+            novatek,display-maker = <0x37>;
+            novatek,panel-cg = <0x01>;
             novatek,fw-name = "novatek_nt36672c_g7b_fw02.bin";
             novatek,mp-name = "novatek_nt36672c_g7b_mp02.bin";
+            novatek,clicknum-file-name = "nvt+ebbg815";
         };
         /* MP */
         //novatek,mp-support-dt;
