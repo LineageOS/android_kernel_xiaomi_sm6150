@@ -4644,6 +4644,7 @@ int dsi_panel_init_display_modes(struct dsi_panel *panel)
 	if (panel->hbm_mode)
 		dsi_panel_apply_hbm_mode(panel);
 
+	if (!dsi_panel_is_type_oled(panel)) return rc;
 	if (panel->display_mode != DISPLAY_MODE_DEFAULT)
 		dsi_panel_apply_display_mode(panel);
 
@@ -4796,24 +4797,27 @@ error:
 
 int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
 {
-	static const enum dsi_cmd_set_type type_map[] = {
-#if (defined CONFIG_MACH_XIAOMI_F4) || (defined CONFIG_MACH_XIAOMI_F10)
+	static const enum dsi_cmd_set_type type_map_oled[] = {
 		DSI_CMD_SET_DISP_HBM_FOD_OFF,
 		DSI_CMD_SET_DISP_HBM_FOD_ON
-#else
+	};
+	static const enum dsi_cmd_set_type type_map_lcd[] = {
 		DSI_CMD_SET_DISP_LCD_HBM_OFF,
 		DSI_CMD_SET_DISP_LCD_HBM_L1_ON,
 		DSI_CMD_SET_DISP_LCD_HBM_L2_ON,
-#endif
 	};
 
 	enum dsi_cmd_set_type type;
 	int rc;
 
-	if (panel->hbm_mode >= 0 && panel->hbm_mode < ARRAY_SIZE(type_map))
-		type = type_map[panel->hbm_mode];
-  else
+	if (panel->hbm_mode >= 0 && panel->hbm_mode < ARRAY_SIZE(type_map_lcd)) {
+		if (dsi_panel_is_type_oled(panel)) 
+			type = type_map_oled[panel->hbm_mode];
+		else
+			type = type_map_lcd[panel->hbm_mode];
+	} else {
 		type = 0;
+	}
 
 	mutex_lock(&panel->panel_lock);
 	rc = dsi_panel_tx_cmd_set(panel, type);
