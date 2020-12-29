@@ -1936,8 +1936,16 @@ static int ufshcd_devfreq_target(struct device *dev,
 	}
 	spin_unlock_irqrestore(hba->host->host_lock, irq_flags);
 
+	pm_runtime_get_noresume(hba->dev);
+	if (!pm_runtime_active(hba->dev)) {
+		pm_runtime_put_noidle(hba->dev);
+		ret = -EAGAIN;
+		goto out;
+	}
 	start = ktime_get();
 	ret = ufshcd_devfreq_scale(hba, scale_up);
+	pm_runtime_put(hba->dev);
+
 	trace_ufshcd_profile_clk_scaling(dev_name(hba->dev),
 		(scale_up ? "up" : "down"),
 		ktime_to_us(ktime_sub(ktime_get(), start)), ret);
@@ -10798,6 +10806,7 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 		goto out;
 
 	pm_runtime_get_sync(hba->dev);
+<<<<<<< HEAD
 	ufshcd_hold_all(hba);
 	ufshcd_mark_shutdown_ongoing(hba);
 	ufshcd_shutdown_clkscaling(hba);
@@ -10816,6 +10825,9 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 	/* reqs issued from contexts other than shutdown will fail from now */
 	ufshcd_scsi_unblock_requests(hba);
 	ufshcd_release_all(hba);
+=======
+
+>>>>>>> e6fa4f96ca4f80aed139d0e5bd11c46463bdf729
 	ret = ufshcd_suspend(hba, UFS_SHUTDOWN_PM);
 out:
 	if (ret)
