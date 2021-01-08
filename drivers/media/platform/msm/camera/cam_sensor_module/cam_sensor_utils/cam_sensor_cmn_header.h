@@ -153,7 +153,7 @@ enum msm_camera_power_seq_type {
 	SENSOR_STANDBY,
 	SENSOR_CUSTOM_GPIO1,
 	SENSOR_CUSTOM_GPIO2,
-#ifdef CONFIG_LDO_WL2866D
+#if (defined CONFIG_LDO_WL2866D) && !(defined CONFIG_MACH_XIAOMI_SURYA)
 	SENSOR_WL2866D_DVDD1, //12
 	SENSOR_WL2866D_DVDD2,
 	SENSOR_WL2866D_AVDD1,
@@ -375,10 +375,10 @@ struct cam_sensor_board_info {
 	int32_t  subdev_intf[SUB_MODULE_MAX];
 	const char *misc_regulator;
 	struct cam_sensor_power_ctrl_t power_info;
-#if (defined CONFIG_LDO_WL2866D) || (defined CONFIG_MACH_XIAOMI_VIOLET)
+#if (defined CONFIG_LDO_WL2866D) || (defined CONFIG_MACH_XIAOMI_SURYA) || (defined CONFIG_MACH_XIAOMI_VIOLET)
 	uint16_t camera_id;
 #endif
-#ifdef CONFIG_MACH_XIAOMI_VIOLET
+#if (defined CONFIG_MACH_XIAOMI_SURYA) || (defined CONFIG_MACH_XIAOMI_VIOLET)
 	const char *sensorName;
 #endif
 };

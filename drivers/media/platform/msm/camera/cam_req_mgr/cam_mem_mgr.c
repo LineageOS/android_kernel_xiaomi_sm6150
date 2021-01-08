@@ -19,6 +19,7 @@
 #include <asm/cacheflush.h>
 #include <linux/ion_kernel.h>
 #include <linux/dma-buf.h>
+#include <linux/syscalls.h>
 
 #include "cam_req_mgr_util.h"
 #include "cam_mem_mgr.h"
@@ -766,6 +767,9 @@ map_kernel_fail:
 map_hw_fail:
 	cam_mem_put_slot(idx);
 slot_fail:
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	sys_close(fd);
+#endif
 	dma_buf_put(dmabuf);
 	return rc;
 }

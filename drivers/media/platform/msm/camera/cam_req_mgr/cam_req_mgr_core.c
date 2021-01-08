@@ -1002,6 +1002,11 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 	int64_t req_id = 0, sync_req_id = 0;
 	int sync_slot_idx = 0, sync_rd_idx = 0, rc = 0;
 	int32_t sync_num_slots = 0;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	int32_t max_idx_diff;
+	uint64_t sof_timestamp_delta = 0;
+	uint64_t master_slave_diff = 0;
+#endif
 	uint64_t sync_frame_duration = 0;
 	bool ready = true, sync_ready = true;
 
@@ -1035,6 +1040,13 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 			- sync_link->prev_sof_timestamp;
 	else
 		sync_frame_duration = DEFAULT_FRAME_DURATION;
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	sof_timestamp_delta =
+		link->sof_timestamp >= sync_link->sof_timestamp
+		? link->sof_timestamp - sync_link->sof_timestamp
+		: sync_link->sof_timestamp - link->sof_timestamp;
+#endif
 
 	CAM_DBG(CAM_CRM,
 		"sync link %x last frame duration is %d ns",
@@ -1098,12 +1110,31 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 		return -EAGAIN;
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	/*
+	 * When the status of sync rd slot is APPLIED,
+	 * the maximum diff between sync_slot_idx and
+	 * sync_rd_idx is 1, since the next processed
+	 * req maybe the request in (sync_rd_idx + 1)th
+	 * slot.
+	 */
+	max_idx_diff =
+		(sync_rd_slot->status == CRM_SLOT_STATUS_REQ_APPLIED) ? 1 : 0;
+#endif
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	if ((sync_link->req.in_q->slot[sync_slot_idx].status !=
+		CRM_SLOT_STATUS_REQ_APPLIED) &&
+		(((sync_slot_idx - sync_rd_idx + sync_num_slots) %
+		sync_num_slots) > max_idx_diff)) {
+#else
 	if ((sync_link->req.in_q->slot[sync_slot_idx].status !=
 		CRM_SLOT_STATUS_REQ_APPLIED) &&
 		(((sync_slot_idx - sync_rd_idx + sync_num_slots) %
 		sync_num_slots) >= 1) &&
 		(sync_rd_slot->status !=
 		CRM_SLOT_STATUS_REQ_APPLIED)) {
+#endif
 		CAM_DBG(CAM_CRM,
 			"Req: %lld [other link] not next req to be applied on link: %x",
 			req_id, sync_link->link_hdl);
@@ -1158,11 +1189,20 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 	 * difference of two SOF timestamp less than
 	 * (sync_frame_duration / 5).
 	 */
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	master_slave_diff = sync_frame_duration;
+	do_div(sync_frame_duration, 5);
+
+	if ((sync_link->sof_timestamp > 0) &&
+		(sof_timestamp_delta < master_slave_diff) &&
+		(sync_rd_slot->sync_mode == CAM_REQ_MGR_SYNC_MODE_SYNC)) {
+#else
 	if ((link->sof_timestamp > sync_link->sof_timestamp) &&
 		(sync_link->sof_timestamp > 0) &&
 		(link->sof_timestamp - sync_link->sof_timestamp <
 		sync_frame_duration / 5) &&
 		(sync_rd_slot->sync_mode == CAM_REQ_MGR_SYNC_MODE_SYNC)) {
+#endif
 
 		/*
 		 * This means current frame should sync with next
@@ -1184,6 +1224,12 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 				"sync link %x too quickly, skip next frame of sync link",
 				sync_link->link_hdl);
 			link->sync_link_sof_skip = true;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		} else if (sync_link->req.in_q->slot[sync_slot_idx].status !=
+			CRM_SLOT_STATUS_REQ_APPLIED) {
+			CAM_DBG(CAM_CRM, "link %x other not applied", link->link_hdl);
+			return -EAGAIN;
+#endif
 		}
 	} else if ((sync_link->sof_timestamp > 0) &&
 		(link->sof_timestamp < sync_link->sof_timestamp) &&
