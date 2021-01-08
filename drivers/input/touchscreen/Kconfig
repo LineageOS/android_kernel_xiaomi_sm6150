@@ -17,6 +17,7 @@ source "drivers/input/touchscreen/fts_521/Kconfig"
 source "drivers/input/touchscreen/goodix_driver_gt9886/Kconfig"
 source "drivers/input/touchscreen/gt9896/Kconfig"
 source "drivers/input/touchscreen/nt36672c/Kconfig"
+source "drivers/input/touchscreen/nt36xxx_spi/Kconfig"
 source "drivers/input/touchscreen/nvt_touch_f7b/Kconfig"
 source "drivers/input/touchscreen/xiaomi/Kconfig"
 
