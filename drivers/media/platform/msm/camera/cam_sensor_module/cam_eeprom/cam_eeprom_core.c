@@ -898,6 +898,13 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 			goto error;
 		}
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		rc = wl2866d_camera_power_up_eeprom();
+		if (rc < 0) {
+			CAM_ERR(CAM_EEPROM, "wl2866d_camera_power_up_eeprom failed, rc=%d", rc);
+			goto memdata_free;
+		}
+#endif
 		rc = cam_eeprom_power_up(e_ctrl,
 			&soc_private->power_info);
 		if (rc) {
@@ -908,13 +915,30 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 		e_ctrl->cam_eeprom_state = CAM_EEPROM_CONFIG;
 		rc = cam_eeprom_read_memory(e_ctrl, &e_ctrl->cal_data);
 		if (rc) {
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+			CAM_ERR(CAM_EEPROM,
+				"read_eeprom_memory failed, rc = %d", rc);
+			cam_destroy_device_hdl(e_ctrl->bridge_intf.device_hdl);
+			CAM_ERR(CAM_EEPROM, "destroying the device hdl");
+
+			e_ctrl->bridge_intf.device_hdl = -1;
+			e_ctrl->bridge_intf.link_hdl = -1;
+			e_ctrl->bridge_intf.session_hdl = -1;
+#else
 			CAM_ERR(CAM_EEPROM,
 				"read_eeprom_memory failed");
+#endif
 			goto power_down;
 		}
 
 		rc = cam_eeprom_get_cal_data(e_ctrl, csl_packet);
 		rc = cam_eeprom_power_down(e_ctrl);
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		rc = wl2866d_camera_power_down_eeprom();
+		if (rc < 0) {
+			CAM_ERR(CAM_EEPROM, "wl2866d_camera_power_down_eeprom failed, rc=%d", rc);
+		}
+#endif
 		e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;
 		vfree(e_ctrl->cal_data.mapdata);
 		vfree(e_ctrl->cal_data.map);
