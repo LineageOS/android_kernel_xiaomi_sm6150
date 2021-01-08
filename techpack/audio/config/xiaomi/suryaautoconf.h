@@ -9,3 +9,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+
+#define CONFIG_SND_SOC_TAS256X 1
+#define CONFIG_TAS256X_CODEC 1
+#define CONFIG_TAS256X_REGMAP 1
+#define CONFIG_TAS25XX_ALGO 1
+#define CONFIG_TAS_SA_CHANNELS 2
