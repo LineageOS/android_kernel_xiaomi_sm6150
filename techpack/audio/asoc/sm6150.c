@@ -5237,7 +5237,7 @@ static void *def_wcd_mbhc_cal(void)
 		(sizeof(btn_cfg->_v_btn_low[0]) * btn_cfg->num_btn);
 
 	btn_high[0] = 75;
-#ifdef CONFIG_MACH_XIAOMI_VIOLET
+#if defined(CONFIG_MACH_XIAOMI_SURYA) || defined(CONFIG_MACH_XIAOMI_VIOLET)
 	btn_high[1] = 225;
 	btn_high[2] = 450;
 	btn_high[3] = 500;
@@ -6643,6 +6643,38 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{/* hw:x,37 */
+		.name = "Tertiary MI2S TX_Hostless",
+		.stream_name = "Tertiary MI2S_TX Hostless Capture",
+		.cpu_dai_name = "TERT_MI2S_TX_HOSTLESS",
+		.platform_name = "msm-pcm-hostless",
+		.dynamic = 1,
+		.dpcm_capture = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+				SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+	},
+	{/* hw:x,38 */
+		.name = "Tertiary MI2S RX_Hostless",
+		.stream_name = "Tertiary MI2S_RX Hostless Playback",
+		.cpu_dai_name = "TERT_MI2S_RX_HOSTLESS",
+		.platform_name = "msm-pcm-hostless",
+		.dynamic = 1,
+		.dpcm_playback = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+				SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+	},
+#else
 	{/* hw:x,37 */
 		.name = "Primary MI2S_RX Hostless",
 		.stream_name = "Primary MI2S_RX Hostless",
@@ -6671,6 +6703,7 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
+#endif
 };
 
 static struct snd_soc_dai_link msm_tavil_fe_dai_links[] = {
@@ -8442,7 +8475,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 	u32 wcn_btfm_intf = 0;
 	const struct of_device_id *match;
 	u32 tasha_codec = 0;
-#ifndef CONFIG_MACH_XIAOMI_VIOLET
+#if !defined(CONFIG_MACH_XIAOMI_SURYA) && !defined(CONFIG_MACH_XIAOMI_VIOLET)
 	int hw_platform;
 #endif
 
@@ -8558,7 +8591,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 				__func__);
 		} else {
 			if (mi2s_audio_intf) {
-#ifndef CONFIG_MACH_XIAOMI_VIOLET
+#if !defined(CONFIG_MACH_XIAOMI_SURYA) && !defined(CONFIG_MACH_XIAOMI_VIOLET)
 				hw_platform = get_hw_version_platform();
 				dev_info(dev, "%s: hw_platform is %d.\n", __func__, hw_platform);
 				if (HARDWARE_PLATFORM_COURBET == hw_platform) {
