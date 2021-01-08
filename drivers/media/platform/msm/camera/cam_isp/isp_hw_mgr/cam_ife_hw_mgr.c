@@ -2589,7 +2589,11 @@ static int cam_ife_mgr_config_hw(void *hw_mgr_priv,
 		if (cfg->init_packet) {
 			rc = wait_for_completion_timeout(
 				&ctx->config_done_complete,
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+				msecs_to_jiffies(60));
+#else
 				msecs_to_jiffies(30));
+#endif
 			if (rc <= 0) {
 				CAM_ERR(CAM_ISP,
 					"config done completion timeout for req_id=%llu rc=%d ctx_index %d",
