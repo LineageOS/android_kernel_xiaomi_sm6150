@@ -34,7 +34,11 @@
 
 /* Timeout values in usec */
 #define CAM_IFE_CSID_TIMEOUT_SLEEP_US                  1000
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define CAM_IFE_CSID_TIMEOUT_ALL_US                    500000
+#else
 #define CAM_IFE_CSID_TIMEOUT_ALL_US                    100000
+#endif
 
 /*
  * Constant Factors needed to change QTimer ticks to nanoseconds

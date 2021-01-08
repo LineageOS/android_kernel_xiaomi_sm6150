@@ -18,7 +18,7 @@
 #define CAM_SENSOR_PINCTRL_STATE_SLEEP "cam_suspend"
 #define CAM_SENSOR_PINCTRL_STATE_DEFAULT "cam_default"
 
-#ifdef CONFIG_LDO_WL2866D
+#if (defined(CONFIG_LDO_WL2866D) && !defined(CONFIG_MACH_XIAOMI_SURYA))
 extern int wl2866d_camera_power_up(int out_iotype);
 extern int wl2866d_camera_power_down(int out_iotype);
 
@@ -1561,7 +1561,7 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 	int32_t vreg_idx = -1;
 	struct cam_sensor_power_setting *power_setting = NULL;
 	struct msm_camera_gpio_num_info *gpio_num_info = NULL;
-#ifdef CONFIG_LDO_WL2866D
+#if (defined(CONFIG_LDO_WL2866D) && !defined(CONFIG_MACH_XIAOMI_SURYA))
 	uint16_t wl2866_time_delay = 0;
 	int wl2866_iotype = -1;
 #endif
@@ -1785,7 +1785,7 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 				goto power_up_failed;
 			}
 			break;
-#ifdef CONFIG_LDO_WL2866D
+#if (defined(CONFIG_LDO_WL2866D) && !defined(CONFIG_MACH_XIAOMI_SURYA))
 		case SENSOR_WL2866D_DVDD1:
 		case SENSOR_WL2866D_DVDD2:
 		case SENSOR_WL2866D_AVDD1:
@@ -1969,7 +1969,7 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 	struct cam_sensor_power_setting *pd = NULL;
 	struct cam_sensor_power_setting *ps = NULL;
 	struct msm_camera_gpio_num_info *gpio_num_info = NULL;
-#ifdef CONFIG_LDO_WL2866D
+#if (defined(CONFIG_LDO_WL2866D) && !defined(CONFIG_MACH_XIAOMI_SURYA))
 	uint16_t wl2866_time_delay = 0;
 	int wl2866_iotype = -1;
 #endif
@@ -2093,7 +2093,7 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 				CAM_ERR(CAM_SENSOR,
 					"Error disabling VREG GPIO");
 			break;
-#ifdef CONFIG_LDO_WL2866D
+#if (defined(CONFIG_LDO_WL2866D) && !defined(CONFIG_MACH_XIAOMI_SURYA))
 		case SENSOR_WL2866D_DVDD1:
 		case SENSOR_WL2866D_DVDD2:
 		case SENSOR_WL2866D_AVDD1:
