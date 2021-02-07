@@ -1,4 +1,5 @@
 /* Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -16,12 +17,27 @@
 #include "fg-alg.h"
 #include "qg-defs.h"
 
+#define NTC_COMP_HIGH_TEMP		500
+#define NTC_COMP_LOW_TEMP		200
+#define TEMP_COMP_TIME			5
+
+enum ffc_current_cfg {
+	TEMP_THRESHOLD,
+	LOW_TEMP_FULL_CURRENT,
+	HIGH_TEMP_FULL_CURRENT,
+	LOW_TEMP_TERMINAL_CURRENT,
+	HIGH_TEMP_TERMINAL_CURRENT,
+	USE_DTS_CONFIG,
+};
+
 struct qg_batt_props {
 	const char		*batt_type_str;
 	int			float_volt_uv;
 	int			vbatt_full_mv;
 	int			fastchg_curr_ma;
 	int			qg_profile_version;
+	int			nom_cap_uah;
+	int			ffc_current_cfg[USE_DTS_CONFIG + 1];
 };
 
 struct qg_irq_info {
@@ -79,6 +95,14 @@ struct qg_dt {
 	bool			multi_profile_load;
 	bool			tcss_enable;
 	bool			bass_enable;
+	bool			disable_hold_full;
+	bool                    temp_battery_id;
+	bool			qg_page0_unused;
+	bool			ffc_iterm_change_by_temp;
+	bool			software_optimize_ffc_qg_iterm;
+	bool			shutdown_delay_enable;
+	int			*dec_rate_seq;
+	int			dec_rate_len;
 };
 
 struct qg_esr_data {
@@ -88,6 +112,22 @@ struct qg_esr_data {
 	u32			post_esr_i;
 	u32			esr;
 	bool			valid;
+};
+
+#define BATT_MA_AVG_SAMPLES	8
+struct batt_params {
+	bool			update_now;
+	int			batt_raw_soc;
+	int			batt_soc;
+	int			samples_num;
+	int			samples_index;
+	int			batt_ma_avg_samples[BATT_MA_AVG_SAMPLES];
+	int			batt_ma_avg;
+	int			batt_ma_prev;
+	int			batt_ma;
+	int			batt_mv;
+	int			batt_temp;
+	struct timespec		last_soc_change_time;
 };
 
 struct qpnp_qg {
@@ -102,6 +142,9 @@ struct qpnp_qg {
 	struct cdev		qg_cdev;
 	struct device_node	*batt_node;
 	dev_t			dev_no;
+	struct batt_params	param;
+	struct delayed_work	soc_monitor_work;
+	struct delayed_work	force_shutdown_work;
 	struct work_struct	udata_work;
 	struct work_struct	scale_soc_work;
 	struct work_struct	qg_status_change_work;
@@ -130,6 +173,7 @@ struct qpnp_qg {
 
 	/* status variable */
 	u32			*debug_mask;
+	bool			force_shutdown;
 	bool			qg_device_open;
 	bool			profile_loaded;
 	bool			battery_missing;
@@ -144,6 +188,8 @@ struct qpnp_qg {
 	bool			force_soc;
 	bool			fvss_active;
 	bool			tcss_active;
+	bool			fastcharge_mode_enabled;
+	bool			shutdown_delay;
 	bool			bass_active;
 	int			charge_status;
 	int			charge_type;
@@ -203,6 +249,22 @@ struct qpnp_qg {
 	struct cycle_counter	*counter;
 	/* ttf */
 	struct ttf		*ttf;
+
+	/*battery temp compensation for F4 with diff ibat*/
+	int			batt_ntc_comp;
+	int			obj_temp;
+	int			report_temp;
+	int			last_ibat;
+	int			real_temp;
+	int			max_temp_comp_value;
+	int			temp_comp_hysteresis;
+	int			temp_comp_num;
+	int			step_index;
+	bool			temp_comp_cfg_valid;
+	bool			temp_comp_enable;
+	struct range_data	*temp_comp_cfg;
+
+	int			batt_fake_temp;
 };
 
 struct ocv_all {
@@ -257,6 +319,13 @@ enum qg_wa_flags {
 	QG_RECHARGE_SOC_WA = BIT(1),
 	QG_CLK_ADJUST_WA = BIT(2),
 	QG_PON_OCV_WA = BIT(3),
+};
+
+enum batt_temp_comp {
+	NTC_NO_COMP = 0,
+	NTC_LOW_COMP = 2,
+	NTC_MID_COMP = 4,
+	NTC_HIGH_COMP = 6,
 };
 
 
