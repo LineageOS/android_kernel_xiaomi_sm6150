@@ -16,7 +16,20 @@ source "drivers/input/touchscreen/fts_521/Kconfig"
 source "drivers/input/touchscreen/goodix_driver_gt9886/Kconfig"
 source "drivers/input/touchscreen/gt9896/Kconfig"
 source "drivers/input/touchscreen/nt36672c/Kconfig"
+source "drivers/input/touchscreen/nvt_touch_f7b/Kconfig"
 source "drivers/input/touchscreen/xiaomi/Kconfig"
+
+config TOUCHSCREEN_NVT_F7B
+	tristate "novatek touchscreens"
+	help
+	  Say Y here if you have a nvt touchscreen.
+	  nvt controllers are multi touch controllers which can
+	  report 5 touches at a time.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called nvt.
 
 config TOUCHSCREEN_TDDI_DBCLK
         bool "TDDI IC enable double click"
