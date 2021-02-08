@@ -9,6 +9,19 @@ fwdir := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE_DIR))
 fwabs := $(addprefix $(srctree)/,$(filter-out /%,$(fwdir)))$(filter /%,$(fwdir))
 
 fw-external-y := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE))
+fw-shipped-$(CONFIG_TOUCHSCREEN_NVT_F7B) += novatek/tianma_nt36672a_miui_f7b.bin
+fw-shipped-$(CONFIG_TOUCHSCREEN_NVT_F7B) += novatek/shenchao_nt36672a_miui_f7b.bin
+fw-shipped-$(CONFIG_TOUCHSCREEN_NVT_F7B) += novatek/shenchao_2nd_nt36672a_miui_f7b.bin
+fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
+
+quiet_cmd_ihex  = IHEX    $@
+      cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@
+
+quiet_cmd_ihex2fw  = IHEX2FW $@
+      cmd_ihex2fw  = $(objtree)/$(obj)/ihex2fw $< $@
+
+quiet_cmd_h16tofw  = H16TOFW $@
+      cmd_h16tofw  = $(objtree)/$(obj)/ihex2fw -w $< $@
 
 fw-shipped-$(CONFIG_TOUCHSCREEN_ST_FTS_V521) += st_fts_f4.ftb st_fts_f4l.ftb
 
