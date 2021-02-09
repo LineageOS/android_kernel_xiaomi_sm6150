@@ -52,6 +52,9 @@ struct msm_audio_ion_private {
 	u64 smmu_sid_bits;
 	u32 smmu_version;
 	u32 iova_start_addr;
+#ifdef CONFIG_MACH_XIAOMI_VIOLET
+	u32 non_fatal_fault;
+#endif
 };
 
 struct msm_audio_alloc_data {
@@ -122,6 +125,9 @@ static int msm_audio_dma_buf_map(struct dma_buf *dma_buf,
 
 	if (!(ionflag & ION_FLAG_CACHED))
 		alloc_data->attach->dma_map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
+#ifdef CONFIG_MACH_XIAOMI_VIOLET
+		alloc_data->attach->dma_map_attrs |= DMA_ATTR_EXEC_MAPPING;
+#endif
 
 	/*
 	 * Get the scatter-gather list.
@@ -720,6 +726,17 @@ static int msm_audio_smmu_init(struct device *dev)
 					   MSM_AUDIO_ION_VA_LEN);
 	if (IS_ERR(mapping))
 		return PTR_ERR(mapping);
+
+#ifdef CONFIG_MACH_XIAOMI_VIOLET
+	msm_audio_ion_data.non_fatal_fault = 1;
+	if (iommu_domain_set_attr(mapping->domain,
+			DOMAIN_ATTR_NON_FATAL_FAULTS,
+			&msm_audio_ion_data.non_fatal_fault) < 0) {
+		dev_err(dev,
+			"%s: Error: failed to set non fatal fault attribute\n",
+			__func__);
+	}
+#endif
 
 	ret = arm_iommu_attach_device(dev, mapping);
 	if (ret) {
