@@ -1063,6 +1063,9 @@ int dsi_display_set_power(struct drm_connector *connector,
 {
 	struct dsi_display *display = disp;
 	struct msm_drm_notifier notify_data;
+ #ifdef CONFIG_MACH_XIAOMI_PHOENIX
+	int event = power_mode;
+#endif
 	int rc = 0;
 
 	if (!display || !display->panel) {
@@ -1070,8 +1073,12 @@ int dsi_display_set_power(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
+ #ifdef CONFIG_MACH_XIAOMI_PHOENIX
+	notify_data.data = &event;
+#else
 	notify_data.data = &power_mode;
 	notify_data.id = MSM_DRM_PRIMARY_DISPLAY;
+#endif
 
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
