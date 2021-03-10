@@ -718,7 +718,7 @@ static ssize_t nvt_pf_switch_proc_read(struct file *filp, char __user *buf, size
 
 	mutex_unlock(&ts->lock);
 //2019.12.21 longcheer taocheng edit for enable pf_proc
-	cnt = snprintf(tmp_buf, PAGE_SIZE, "pf_switch: %d\n", pf_switch);
+	cnt = snprintf(tmp_buf, sizeof(tmp_buf), "pf_switch: %d\n", pf_switch);
 	if (copy_to_user(buf, tmp_buf, sizeof(tmp_buf))) {
 		NVT_ERR("copy_to_user() error!\n");
 		return -EFAULT;
@@ -896,7 +896,7 @@ static ssize_t nvt_sensitivity_switch_proc_read(struct file *filp, char __user *
 
 	mutex_unlock(&ts->lock);
 
-	cnt = snprintf(tmp_buf, PAGE_SIZE, "sensitivity_switch: %d\n", sensitivity_switch);
+	cnt = snprintf(tmp_buf, sizeof(tmp_buf), "sensitivity_switch: %d\n", sensitivity_switch);
 	if (copy_to_user(buf, tmp_buf, sizeof(tmp_buf))) {
 		NVT_ERR("copy_to_user() error!\n");
 		return -EFAULT;
@@ -1074,7 +1074,7 @@ static ssize_t nvt_er_range_switch_proc_read(struct file *filp, char __user *buf
 
 	mutex_unlock(&ts->lock);
 
-	cnt = snprintf(tmp_buf, PAGE_SIZE, "er_range_switch: %d\n", er_range_switch);
+	cnt = snprintf(tmp_buf, sizeof(tmp_buf), "er_range_switch: %d\n", er_range_switch);
 	if (copy_to_user(buf, tmp_buf, sizeof(tmp_buf))) {
 		NVT_ERR("copy_to_user() error!\n");
 		return -EFAULT;
@@ -1591,7 +1591,7 @@ static ssize_t nvt_pocket_palm_switch_proc_read(struct file *filp, char __user *
 
 	mutex_unlock(&ts->lock);
 //2020.01.02 longcheer taocheng edit for enable pocket_proc
-	cnt = snprintf(tmp_buf, PAGE_SIZE, "pocket_palm_switch: %d\n", pocket_palm_switch);
+	cnt = snprintf(tmp_buf, sizeof(tmp_buf), "pocket_palm_switch: %d\n", pocket_palm_switch);
 	if (copy_to_user(buf, tmp_buf, sizeof(tmp_buf))) {
 		NVT_LOG("copy_to_user() error!\n");
 		return -EFAULT;
@@ -1777,7 +1777,7 @@ static ssize_t nvt_charger_switch_proc_read(struct file *filp, char __user *buf,
 
 	mutex_unlock(&ts->lock);
 
-	cnt = snprintf(tmp_buf, PAGE_SIZE, "charger_switch: %d\n", charger_switch);
+	cnt = snprintf(tmp_buf, sizeof(tmp_buf), "charger_switch: %d\n", charger_switch);
 	if (copy_to_user(buf, tmp_buf, sizeof(tmp_buf))) {
 		NVT_ERR("copy_to_user() error!\n");
 		return -EFAULT;
