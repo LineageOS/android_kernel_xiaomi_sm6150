@@ -42,11 +42,18 @@ struct ds28e16_data {
 	struct device *dev;
 
 	int version;
+#ifdef CONFIG_K6_CHARGE
+	bool batt_verified;
+#endif
 
 	struct power_supply *verify_psy;
 	struct power_supply_desc verify_psy_d;
 
+#ifdef CONFIG_K6_CHARGE
+	struct delayed_work	battery_verify_work;
+#else
 	struct delayed_work	authentic_work;
+#endif
 };
 
 unsigned int attr_trytimes = 1;
@@ -57,14 +64,25 @@ unsigned char session_seed[32] = {
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
 unsigned char S_secret[32] = {
+#ifdef CONIFG_K6_CHARGE
+0x0C, 0x99, 0x2B, 0xD3, 0x95, 0xDB, 0xA0, 0xB4,
+0xEF, 0x07, 0xB3, 0xD8, 0x75, 0xF3, 0xC7, 0xAE,
+0xDA, 0xC4, 0x41, 0x2F, 0x48, 0x93, 0xB5, 0xD9,
+0xE1, 0xE5, 0x4B, 0x20, 0x9B, 0xF3, 0x77, 0x39};
+#else
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+#endif
 unsigned char challenge[32] = {0x00};
 int auth_ANON = 1;
 int auth_BDCONST = 1;
+#ifdef CONFIG_K6_CHARGE
+int pagenumber = 0;
+#else
 int pagenumber = 1;
+#endif
 
 // maxim define
 int tm = 1;
@@ -87,6 +105,11 @@ unsigned char mi_page0_data[16] = {0x00};
 unsigned char mi_page1_data[16] = {0x00};
 unsigned char mi_counter[16] = {0x00};
 int mi_auth_result = 0x00;
+#ifdef CONFIG_K6_CHARGE
+static bool batt_verified_result_from_uefi;
+static bool batt_chip_ok_result_from_uefi;
+static bool flag_battery_verify_process = false;
+#endif
 
 unsigned char crc_low_first(unsigned char *ptr, unsigned char len)
 {
@@ -141,6 +164,10 @@ short Read_RomID(unsigned char *RomID)
 		memcpy(mi_romid, RomID, 8);
 		if ((mi_romid[0] == FAMILY_CODE) && (mi_romid[6] == CUSTOM_ID_MSB) && ((mi_romid[5] & 0xf0) == CUSTOM_ID_LSB))
 			flag_mi_romid = 2;
+#ifdef CONFIG_K6_CHARGE
+		else
+			flag_mi_romid = 1;
+#endif
 		return DS_TRUE;
 	} else {
 		ow_reset();
@@ -357,7 +384,11 @@ int DS28E16_cmd_readMemory(int pg, unsigned char *data)
 			}
 			break;
 		default:
+#ifdef CONFIG_K6_CHARGE
+			break;
+#else
 			return DS_FALSE;
+#endif
 	}
 
 	last_result_byte = RESULT_FAIL_NONE;
@@ -375,6 +406,13 @@ int DS28E16_cmd_readMemory(int pg, unsigned char *data)
 	?RX: Data
 	?<Stop>
 	*/
+
+#ifdef CONFIG_K6_CHARGE
+	if (pg >= MAX_PAGENUM) {
+		ds_err("page(%d) data should not be set.\n", pg);
+		return DS_FALSE;
+	}
+#endif
 
 	write_buf[write_len++] = length_byte;
 	write_buf[write_len++] = CMD_READ_MEM;
@@ -435,6 +473,13 @@ int DS28E16_cmd_writeMemory(int pg, unsigned char *data)
 	unsigned char pagenum = (unsigned char)pg & 0x03;
 
 	last_result_byte = RESULT_FAIL_NONE;
+
+#ifdef CONFIG_K6_CHARGE
+	if (pg > MAX_PAGENUM) {
+		ds_err("page(%d) data should not be set.\n", pg);
+		return DS_FALSE;
+	}
+#endif
 	/*
 	?<Start, device address write>
 	?TX: Write Memory Command
@@ -466,7 +511,11 @@ int DS28E16_cmd_writeMemory(int pg, unsigned char *data)
 				}
 				if (pagenum == 0x01) {
 					flag_mi_page1_data = 0;
+#ifdef CONFIG_K6_CHARGE
+					memset(mi_page1_data, 0x00, 16);
+#else
 					memset(mi_page0_data, 0x00, 16);
+#endif
 				}
 				if (pagenum == 0x02) {
 					flag_mi_counter = 0;
@@ -766,9 +815,11 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 	int msg_len = 0;
 	unsigned char flag = DS_FALSE;
 
+#ifndef CONFIG_K6_CHARGE
 	//if (flag_mi_auth_result)
 	if (mi_auth_result == DS_TRUE)
 		return mi_auth_result;
+#endif
 
 	if (anon != ANONYMOUS) {
 		if (ds28el16_get_page_status_retry(status_chip) == DS_TRUE) {
@@ -778,11 +829,20 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 			return ERROR_R_STATUS;
 		}
 
+#ifndef CONFIG_K6_CHARGE
 		if (ds28el16_Read_RomID_retry(mi_romid) != DS_TRUE) {
 			ow_reset();
 			return ERROR_R_ROMID;
 		}
+#endif
 	}
+
+#ifdef CONFIG_K6_CHARGE
+	if (ds28el16_Read_RomID_retry(mi_romid) != DS_TRUE) {
+		ow_reset();
+		return ERROR_R_ROMID;
+	}
+#endif
 
 	// DS28E16 calculate its session secret
 	flag = DS28E16_cmd_computeS_Secret_retry(anon,
@@ -999,8 +1059,10 @@ static int ds28el16_get_page_data_retry(int page, unsigned char *data)
 {
 	int i;
 
+#ifndef CONFIG_K6_CHARGE
 	if (page >= MAX_PAGENUM)
 		return DS_FALSE;
+#endif
 
 	for (i = 0; i < GET_USER_MEMORY_RETRY; i++) {
 		ds_info("read page data communication start... %d\n", i);
@@ -1071,6 +1133,36 @@ static int DS28E16_cmd_computeReadPageAuthentication_retry(int anon, int pg,
 
 // retry interface end //
 
+#ifdef CONFIG_K6_CHARGE
+static int ds28el16_do_authentication(struct ds28e16_data *data)
+{
+	int result = 0, i;
+
+	ds_log("%s enter\n", __func__);
+
+	if (flag_battery_verify_process) {
+		ds_log("%s flag_battery_verify_process...\n", __func__);
+		return result;
+	}
+
+	for (i = 0; i < GET_VERIFY_RETRY; i++) {
+		result = AuthenticateDS28E16(auth_ANON, auth_BDCONST, 0,
+			pagenumber, challenge, session_seed, S_secret);
+		if (result == DS_TRUE) {
+			data->batt_verified = 1;
+			ds_log("%s battery verify ok[%d]", __func__, result);
+			return result;
+		}
+	}
+
+	if (result != DS_TRUE) {
+		data->batt_verified = 0;
+		ds_log("%s battery verify failed[%d]", __func__, result);
+	}
+	return result;
+}
+#endif
+
 /* All power supply functions here */
 
 static enum power_supply_property verify_props[] = {
@@ -1088,6 +1180,9 @@ static enum power_supply_property verify_props[] = {
 	POWER_SUPPLY_PROP_PAGE1_DATA,
 	POWER_SUPPLY_PROP_VERIFY_MODEL_NAME,
 	POWER_SUPPLY_PROP_CHIP_OK,
+#ifdef CONFIG_K6_CHARGE
+	POWER_SUPPLY_PROP_AUTHENTIC,
+#endif
 };
 
 static int verify_get_property(struct power_supply *psy, enum power_supply_property psp,
@@ -1095,19 +1190,35 @@ static int verify_get_property(struct power_supply *psy, enum power_supply_prope
 {
 	int ret;
 	unsigned char buf[50];
+#ifdef CONFIG_K6_CHARGE
+	struct ds28e16_data *data = power_supply_get_drvdata(psy);
+
+	if (flag_battery_verify_process && psp != POWER_SUPPLY_PROP_AUTHEN_RESULT && psp != POWER_SUPPLY_PROP_PAGENUMBER) {
+		ds_info("battery verifing\n");
+		return -ENODATA;
+	}
+#endif
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_VERIFY_MODEL_NAME:
+#ifdef CONFIG_K6_CHARGE
+		ret = Read_RomID(mi_romid);
+#else
 		ret = ds28el16_Read_RomID_retry(mi_romid);
+#endif
 		if (ret == DS_TRUE)
 			val->strval = "ds28e16";
 		else
 			val->strval = "unknown";
 		break;
 	case POWER_SUPPLY_PROP_AUTHEN_RESULT:
+#ifdef CONFIG_K6_CHARGE
+		if (data->batt_verified == DS_TRUE)
+#else
 		ret = AuthenticateDS28E16(auth_ANON, auth_BDCONST, 0,
 			pagenumber, challenge, session_seed, S_secret);
 		if (ret == DS_TRUE)
+#endif
 			val->intval = true;
 		else
 			val->intval = false;
@@ -1116,12 +1227,27 @@ static int verify_get_property(struct power_supply *psy, enum power_supply_prope
 		val->intval = pagenumber;
 		break;
 	case POWER_SUPPLY_PROP_ROMID:
+#ifdef CONFIG_K6_CHARGE
+		ret = Read_RomID(mi_romid);
+#else
 		ret = ds28el16_Read_RomID_retry(mi_romid);
+#endif
 		memcpy(val->arrayval, mi_romid, 8);
 		if (ret != DS_TRUE)
+#ifdef CONFIG_K6_CHARGE
+			ret = -EAGAIN;
+#else
 			return -EAGAIN;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CHIP_OK:
+#ifdef CONFIG_K6_CHARGE
+		if (batt_chip_ok_result_from_uefi) {
+			val->intval = true;
+			ds_info("batt_chip_ok_result_from_uefi is true already\n");
+			break;
+		}
+#endif
 		ret = ds28el16_Read_RomID_retry(mi_romid);
 		if ((mi_romid[0] == FAMILY_CODE) && (mi_romid[6] == CUSTOM_ID_MSB) && ((mi_romid[5] & 0xf0) == CUSTOM_ID_LSB))
 			val->intval = true;
@@ -1129,34 +1255,72 @@ static int verify_get_property(struct power_supply *psy, enum power_supply_prope
 			val->intval = false;
 		break;
 	case POWER_SUPPLY_PROP_DS_STATUS:
+#ifdef CONFIG_K6_CHARGE
+		ret = DS28E16_cmd_readStatus(buf);
+#else
 		ret = ds28el16_get_page_status_retry(buf);
+#endif
 		memcpy(val->arrayval, buf, 8);
 		if (ret != DS_TRUE)
+#ifdef CONFIG_K6_CHARGE
+			ret = -EAGAIN;
+#else
 			return -EAGAIN;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_PAGEDATA:
+#ifdef CONFIG_K6_CHARGE
+		ret = DS28E16_cmd_readMemory(pagenumber, buf);
+#else
 		ret = ds28el16_get_page_data_retry(pagenumber, buf);
+#endif
 		memcpy(val->arrayval, buf, 16);
 		if (ret != DS_TRUE)
+#ifdef CONFIG_K6_CHARGE
+			ret = -EAGAIN;
+#else
 			return -EAGAIN;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_PAGE0_DATA:
+#ifdef CONFIG_K6_CHARGE
+		ret = DS28E16_cmd_readMemory(0, buf);
+#else
 		ret = ds28el16_get_page_data_retry(0, buf);
+#endif
 		memcpy(val->arrayval, buf, 16);
 		if (ret != DS_TRUE)
+#ifdef CONFIG_K6_CHARGE
+			ret = -EAGAIN;
+#else
 			return -EAGAIN;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_PAGE1_DATA:
+#ifdef CONFIG_K6_CHARGE
+		ret = DS28E16_cmd_readMemory(1, buf);
+#else
 		ret = ds28el16_get_page_data_retry(1, buf);
+#endif
 		memcpy(val->arrayval, buf, 16);
 		if (ret != DS_TRUE)
+#ifdef CONFIG_K6_CHARGE
+			ret = -EAGAIN;
+#else
 			return -EAGAIN;
+#endif
 		break;
 	default:
 		ds_err("unsupported property %d\n", psp);
 		return -ENODATA;
 	}
 
+#ifdef CONFIG_K6_CHARGE
+	if (ret < 0) {
+		ds_err("Couldn't get prop %d rc = %d\n", psp, ret);
+		return -ENODATA;
+	}
+#endif
 	return 0;
 }
 
@@ -1166,6 +1330,10 @@ static int verify_set_property(struct power_supply *psy,
 {
 	//int ret;
 	//unsigned char buf[50];
+#ifdef CONFIG_K6_CHARGE
+	struct ds28e16_data *data = power_supply_get_drvdata(psy);
+	int authen_result;
+#endif
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_PAGENUMBER:
@@ -1194,6 +1362,14 @@ static int verify_set_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_AUTH_BDCONST:
 		auth_BDCONST = val->intval;
 		break;
+#ifdef CONFIG_K6_CHARGE
+	case POWER_SUPPLY_PROP_AUTHENTIC:
+		if (val->intval == 1 && !flag_battery_verify_process) {
+			authen_result = ds28el16_do_authentication(data);
+			pr_err("redo authentic: authen_result: %d\n", authen_result);
+		}
+		break;
+#endif
 	default:
 		ds_err("unsupported property %d\n", prop);
 		return -ENODATA;
@@ -1215,6 +1391,9 @@ static int verify_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHALLENGE:
 	case POWER_SUPPLY_PROP_AUTH_ANON:
 	case POWER_SUPPLY_PROP_AUTH_BDCONST:
+#ifdef CONFIG_K6_CHARGE
+	case POWER_SUPPLY_PROP_AUTHENTIC:
+#endif
 		ret = 1;
 		break;
 	default:
@@ -1314,7 +1493,11 @@ struct device_attribute *attr, char *buf)
 	int i = 0; int count = 0;
 
 	for (i = 0; i < attr_trytimes; i++) {
+#ifdef CONFIG_K6_CHARGE
+		status = Read_RomID(RomID);
+#else
 		status = ds28el16_Read_RomID_retry(RomID);
+#endif
 
 		if (status == DS_TRUE) {
 			count++;
@@ -1365,7 +1548,11 @@ struct device_attribute *attr, char *buf)
 	int i = 0; int count = 0;
 
 	for (i = 0; i < attr_trytimes; i++) {
+#ifdef CONFIG_K6_CHARGE
+		result = DS28E16_cmd_readMemory(pagenumber, pagedata);
+#else
 		result = ds28el16_get_page_data_retry(pagenumber, pagedata);
+#endif
 
 		if (result == DS_TRUE) {
 			count++;
@@ -1586,7 +1773,11 @@ struct device_attribute *attr, char *buf)
 
 
 	for (i = 0; i < attr_trytimes; i++) {
+#ifdef CONFIG_K6_CHARGE
+		result = DS28E16_cmd_readStatus(status);
+#else
 		result = ds28el16_get_page_status_retry(status);
+#endif
 
 		if (result == DS_TRUE) {
 			count++;
@@ -1660,6 +1851,48 @@ static const struct attribute_group ds_attr_group = {
 	.attrs = ds_attributes,
 };
 
+#ifdef CONFIG_K6_CHARGE
+#define VERIFY_PERIOD_S		(5*1000)
+#define VERIFY_MAX_COUNT	5
+static void battery_verify(struct work_struct *work)
+{
+	int result, i;
+	static int count;
+	struct ds28e16_data *data = container_of(work, struct ds28e16_data,
+							battery_verify_work.work);
+
+	ds_log("%s enter\n", __func__);
+	if (batt_verified_result_from_uefi) {
+		data->batt_verified = 1;
+		ds_info("%s batt_verified_result_from_uefi is true\n", __func__);
+		return;
+	}
+	flag_battery_verify_process = true;
+	for (i = 0; i < GET_VERIFY_RETRY; i++) {
+		result = AuthenticateDS28E16(auth_ANON, auth_BDCONST, 0,
+			pagenumber, challenge, session_seed, S_secret);
+		if (result == DS_TRUE)
+			break;
+	}
+
+	if (result == DS_TRUE) {
+		data->batt_verified = 1;
+		flag_battery_verify_process = false;
+		ds_info("%s batt_verified = 1 \n", __func__);
+	} else {
+		data->batt_verified = 0;
+		if (count < VERIFY_MAX_COUNT) {
+			schedule_delayed_work(&data->battery_verify_work,
+						msecs_to_jiffies(VERIFY_PERIOD_S));
+			ds_info("%s battery verify failed times[%d]", __func__, count);
+			count++;
+		} else {
+			flag_battery_verify_process = false;
+			ds_info("%s battery verify failed[%d]", __func__, result);
+		}
+	}
+}
+#else
 static int authentic_period_ms = 5000;
 #define AUTHENTIC_COUNT_MAX 5
 int retry_authentic;
@@ -1689,11 +1922,14 @@ static void authentic_work(struct work_struct *work)
 		ds_log("authentic result is %d\n", pval.intval);
 	}
 }
+#endif
 static int ds28e16_probe(struct platform_device *pdev)
 {
 	int retval = 0;
 	struct ds28e16_data *ds28e16_data;
+#ifndef CONFIG_K6_CHARGE
 	union power_supply_propval b_val = {0,};
+#endif
 
 	ds_log("%s entry.", __func__);
 	ds_dbg("platform_device is %s", pdev->name);
@@ -1729,7 +1965,12 @@ static int ds28e16_probe(struct platform_device *pdev)
 	ds28e16_data->dev = &pdev->dev;
 	ds28e16_data->pdev = pdev;
 	platform_set_drvdata(pdev, ds28e16_data);
+#ifdef CONFIG_K6_CHARGE
+	INIT_DELAYED_WORK(&ds28e16_data->battery_verify_work, battery_verify);
+	schedule_delayed_work(&ds28e16_data->battery_verify_work, msecs_to_jiffies(0));
+#else
 	INIT_DELAYED_WORK(&ds28e16_data->authentic_work, authentic_work);
+#endif
 
 	retval = verify_psy_register(ds28e16_data);
 	if (retval) {
@@ -1743,12 +1984,14 @@ static int ds28e16_probe(struct platform_device *pdev)
 		goto ds28e16_create_group_err;
 	}
 
+#ifndef CONFIG_K6_CHARGE
 	retval = power_supply_get_property(ds28e16_data->verify_psy,
 					POWER_SUPPLY_PROP_AUTHEN_RESULT, &b_val);
 	if (b_val.intval != true) {
 		schedule_delayed_work(&ds28e16_data->authentic_work,
 				msecs_to_jiffies(0));
 	}
+#endif
 	return 0;
 
 ds28e16_create_group_err:
@@ -1813,6 +2056,27 @@ static int __init ds28e16_init(void)
 
 	return platform_driver_register(&ds28e16_driver);
 }
+
+#ifdef CONFIG_K6_CHARGE
+static int __init early_parse_batt_verified_result(char *p)
+{
+	if (p) {
+		if (!strcmp(p, "11")) {
+			batt_verified_result_from_uefi = true;
+			batt_chip_ok_result_from_uefi = true;
+		} else if (!strcmp(p, "10")) {
+			batt_verified_result_from_uefi = true;
+			batt_chip_ok_result_from_uefi = false;
+		} else if (!strcmp(p, "01")) {
+			batt_verified_result_from_uefi = false;
+			batt_chip_ok_result_from_uefi = true;
+		}
+	}
+
+	return 0;
+}
+early_param("androidboot.batt_verified_result", early_parse_batt_verified_result);
+#endif
 
 static void __exit ds28e16_exit(void)
 {

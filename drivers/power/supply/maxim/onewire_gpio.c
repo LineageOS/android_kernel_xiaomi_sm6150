@@ -114,7 +114,11 @@ unsigned char read_bit(void)
 	ONE_WIRE_OUT_LOW;
 	Delay_us(1);////
 	ONE_WIRE_CONFIG_IN;
+#ifdef CONFIG_K6_CHARGE
+	Delay_ns(100);//
+#else
 	Delay_ns(500);//
+#endif
 	vamm = readl_relaxed(g_onewire_data->gpio_in_out_reg); // Read
 	Delay_us(5);
 	ONE_WIRE_OUT_HIGH;
