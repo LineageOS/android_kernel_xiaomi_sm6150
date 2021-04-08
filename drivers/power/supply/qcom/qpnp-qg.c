@@ -2095,8 +2095,14 @@ done:
 }
 
 
+#ifdef CONFIG_K6_CHARGE
+#define FFC_CHG_TERM_SWD_CURRENT	-600
+#define FFC_CHG_TERM_NVT_CURRENT	-550
+#define FFC_BATT_FULL_CURRENT	920000
+#else
 #define FFC_CHG_TERM_CURRENT	-830
 #define FFC_BATT_FULL_CURRENT	1150000
+#endif
 #define LOW_TEMP_FFC_BATT_FULL_CURRENT	1480000
 #define HIGH_TEMP_FFC_BATT_FULL_CURRENT	1610000
 #define	LOW_TEMP_FFC_CHG_TERM_CURRENT	-980
@@ -2177,8 +2183,18 @@ static int qg_get_ffc_iterm_for_chg(struct qpnp_qg *chip)
 		else
 			ffc_terminal_current = HIGH_TEMP_FFC_CHG_TERM_CURRENT;
 	} else {
+#ifdef CONFIG_K6_CHARGE
+		if (is_batt_vendor_nvt){
+			ffc_terminal_current = FFC_CHG_TERM_NVT_CURRENT;
+			pr_err("ffc_terminal_current nvt is 550\n", rc);
+		}else{
+			ffc_terminal_current = FFC_CHG_TERM_SWD_CURRENT;
+			pr_err("ffc_terminal_current swd is 600\n", rc);
+		}
+#else
 		ffc_terminal_current = FFC_CHG_TERM_CURRENT;
 		pr_err("ffc_terminal_current other is 830\n", rc);
+#endif
 	}
 	return ffc_terminal_current;
 }
@@ -3505,7 +3521,23 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 				pr_err("qg_load_battery_profile : get romid error.\n");
 			}
 		}
+#ifdef CONFIG_K6_CHARGE
+		if (is_batt_vendor_swd) {
+			pr_err("is_batt_vendor_swd is %d\n", is_batt_vendor_swd);
+			profile_node = of_batterydata_get_best_profile(chip->batt_node,
+							chip->batt_id_ohm / 1000, "K6_sunwoda_5020mah");
+			chip->profile_judge_done = true;
+		} else if (is_batt_vendor_nvt) {
+			pr_err("is_batt_vendor_nvt is %d\n", is_batt_vendor_nvt);
+			profile_node = of_batterydata_get_best_profile(chip->batt_node,
+							chip->batt_id_ohm / 1000, "K6_nvt_5020mah");
+			chip->profile_judge_done = true;
+		}
 
+#endif
+
+#ifndef CONFIG_K6_CHARGE
+		// the battery is xiaomi's batt; FC code, custom id
 		if (pval.intval == true) {
 			rc = power_supply_get_property(chip->max_verify_psy,
 					POWER_SUPPLY_PROP_PAGE0_DATA, &pval);
@@ -3523,10 +3555,16 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 				}
 			}
 		}
+#endif
 		if (chip->profile_judge_done == false) {
 			if (chip->profile_loaded == false) {
+#ifdef CONFIG_K6_CHARGE
+				profile_node = of_batterydata_get_best_profile(chip->batt_node,
+					chip->batt_id_ohm / 1000, "K6_sunwoda_5020mah");
+#else
 				profile_node = of_batterydata_get_best_profile(chip->batt_node,
 					chip->batt_id_ohm / 1000, "G7BSWDBM4P_4500mAh");
+#endif
 			} else {
 				return 0;
 			}
