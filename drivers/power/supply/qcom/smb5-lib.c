@@ -894,6 +894,17 @@ int smblib_set_fastcharge_mode(struct smb_charger *chg, bool enable)
 	if (!chg->bms_psy)
 		return 0;
 
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+	rc = power_supply_get_property(chg->bms_psy,
+				POWER_SUPPLY_PROP_AUTHENTIC, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't get battery authentic:%d\n", rc);
+		return rc;
+	}
+	if (!pval.intval)
+		enable = false;
+#endif
+
 	/*if soc > 90 do not set fastcharge flag*/
 	rc = power_supply_get_property(chg->bms_psy,
 			POWER_SUPPLY_PROP_CAPACITY, &pval);
@@ -1419,12 +1430,27 @@ static int smblib_notifier_call(struct notifier_block *nb,
 {
 	struct power_supply *psy = v;
 	struct smb_charger *chg = container_of(nb, struct smb_charger, nb);
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+	int rc;
+	union power_supply_propval pval = {0,};
+#endif
 
 	if (!strcmp(psy->desc->name, "bms")) {
 		if (!chg->bms_psy)
 			chg->bms_psy = psy;
-		if (ev == PSY_EVENT_PROP_CHANGED)
+		if (ev == PSY_EVENT_PROP_CHANGED) {
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+			rc = power_supply_get_property(chg->bms_psy,
+					POWER_SUPPLY_PROP_AUTHENTIC, &pval);
+			if (rc < 0) {
+				pr_err("Couldn't get batt verify status rc=%d\n", rc);
+			}
+			chg->batt_verified = pval.intval;
+			pr_err("batt_verified =%d\n", chg->batt_verified);
+			schedule_work(&chg->batt_verify_update_work);
+#endif
 			schedule_work(&chg->bms_update_work);
+		}
 	}
 
 	if (chg->jeita_configured == JEITA_CFG_NONE)
@@ -9893,6 +9919,9 @@ int smblib_init(struct smb_charger *chg)
 
 		chg->bms_psy = power_supply_get_by_name("bms");
 
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+		chg->batt_verify_psy = power_supply_get_by_name("batt_verify");
+#endif
 		if (chg->sec_pl_present) {
 			chg->pl.psy = power_supply_get_by_name("parallel");
 			if (chg->pl.psy) {

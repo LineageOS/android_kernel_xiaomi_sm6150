@@ -554,6 +554,9 @@ struct smb_charger {
 	struct power_supply		*usb_port_psy;
 	struct power_supply		*wls_psy;
 	struct power_supply		*cp_psy;
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+	struct power_supply		*batt_verify_psy;
+#endif
 	enum power_supply_type		real_charger_type;
 
 	/* dual role class */
