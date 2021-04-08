@@ -70,6 +70,7 @@ struct step_chg_info {
 	bool			batt_missing;
 	bool			taper_fcc;
 	bool			six_pin_battery;
+	bool			use_bq_pump;
 	bool			ffc_iterm_change_by_temp;
 	bool			fcc_limited_by_soc;
 	int			jeita_fcc_index;
@@ -92,6 +93,7 @@ struct step_chg_info {
 	struct power_supply	*bms_psy;
 	struct power_supply	*usb_psy;
 	struct power_supply	*dc_psy;
+	struct power_supply	*bq_psy;
 	struct delayed_work	status_change_work;
 	struct delayed_work	get_config_work;
 	struct notifier_block	nb;
@@ -134,6 +136,17 @@ static bool is_usb_available(struct step_chg_info *chip)
 		chip->usb_psy = power_supply_get_by_name("usb");
 
 	if (!chip->usb_psy)
+		return false;
+
+	return true;
+}
+
+static bool is_bq25970_available(struct step_chg_info *chip)
+{
+	if (!chip->bq_psy)
+		chip->bq_psy = power_supply_get_by_name("bq2597x-standalone");
+
+	if (!chip->bq_psy)
 		return false;
 
 	return true;
@@ -401,6 +414,8 @@ static int get_step_chg_jeita_setting_from_profile(struct step_chg_info *chip)
 
 	chip->six_pin_battery =
 		of_property_read_bool(profile_node, "mi,six-pin-battery");
+	chip->use_bq_pump =
+		of_property_read_bool(profile_node, "mi,use-bq-pump");
 	chip->ffc_iterm_change_by_temp =
 		of_property_read_bool(profile_node, "mi,ffc-iterm-change-by-temp");
 	chip->fcc_limited_by_soc =
@@ -617,12 +632,20 @@ static int handle_step_chg_config(struct step_chg_info *chip)
 		goto update_time;
 	}
 
-	if (chip->step_chg_config->param.use_bms)
-		rc = power_supply_get_property(chip->bms_psy,
-				chip->step_chg_config->param.psy_prop, &pval);
-	else
-		rc = power_supply_get_property(chip->batt_psy,
-				chip->step_chg_config->param.psy_prop, &pval);
+	if (chip->use_bq_pump) {
+		if (is_bq25970_available(chip)) {
+			rc = power_supply_get_property(chip->bq_psy,
+				POWER_SUPPLY_PROP_TI_BATTERY_VOLTAGE, &pval);
+			pval.intval = pval.intval * 1000;
+		}
+	} else {
+		if (chip->step_chg_config->param.use_bms)
+			rc = power_supply_get_property(chip->bms_psy,
+					chip->step_chg_config->param.psy_prop, &pval);
+		else
+			rc = power_supply_get_property(chip->batt_psy,
+					chip->step_chg_config->param.psy_prop, &pval);
+	}
 
 	if (rc < 0) {
 		pr_err("Couldn't read %s property rc=%d\n",
@@ -802,7 +825,7 @@ static int handle_jeita(struct step_chg_info *chip)
 
 	temp = pval.intval;
 	/* should disable/enable cp(smb1390) when soft jeita trigger and clear */
-	if (chip->six_pin_battery) {
+	if (chip->six_pin_battery && !chip->use_bq_pump) {
 		if (!chip->cp_disable_votable)
 			chip->cp_disable_votable = find_votable("CP_DISABLE");
 
