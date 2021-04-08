@@ -135,7 +135,11 @@ enum print_reason {
 #define HIGH_NUM_PULSE_THR			12
 
 #define PD_UNVERIFED_CURRENT		4800000
+#ifdef CONFIG_K6_CHARGE
+#define PD_UNVERIFED_VOLTAGE		4450000
+#else
 #define PD_UNVERIFED_VOLTAGE		4400000
+#endif
 /* thermal micros */
 #define MAX_TEMP_LEVEL		16
 /* percent of ICL compared to base 5V for different PD voltage_min voltage */
@@ -193,8 +197,13 @@ enum print_reason {
 #define ROLE_REVERSAL_DELAY_MS		2000
 
 /* six pin new battery step charge micros */
+#ifdef CONFIG_K6_CHARGE
+#define MAX_STEP_ENTRIES			3
+#define MAX_COUNT_OF_IBAT_STEP			2
+#else
 #define MAX_STEP_ENTRIES			2
 #define MAX_COUNT_OF_IBAT_STEP			2
+#endif
 
 
 #define STEP_CHG_DELAYED_MONITOR_MS			15000
@@ -209,7 +218,11 @@ enum print_reason {
 
 /* ffc related */
 #define NON_FFC_VFLOAT_VOTER			"NON_FFC_VFLOAT_VOTER"
+#ifdef CONFIG_K6_CHARGE
+#define NON_FFC_VFLOAT_UV			4450000
+#else
 #define NON_FFC_VFLOAT_UV			4400000
+#endif
 
 #define CP_COOL_THRESHOLD		150
 #define CP_WARM_THRESHOLD		450
