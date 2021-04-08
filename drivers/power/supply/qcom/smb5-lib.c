@@ -599,6 +599,11 @@ static const struct apsd_result *smblib_get_apsd_result(struct smb_charger *chg)
 		}
 	}
 
+	if (result == &smblib_apsd_results[HVDCP3] && chg->fake_hvdcp3) {
+		pr_info("fake hvdcp3, set as hvdcp2");
+		result = &smblib_apsd_results[HVDCP2];
+	}
+
 	return result;
 }
 
@@ -735,6 +740,9 @@ int smblib_set_charge_param(struct smb_charger *chg,
 			smblib_masked_write(chg, USBIN_AICL_OPTIONS_CFG_REG, SUSPEND_ON_COLLAPSE_USBIN_BIT, 0);
 		}
 	}
+
+	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
 
 	if (chg->cp_psy && param->reg == CHGR_FLOAT_VOLTAGE_CFG_REG) {
 		power_supply_get_property(chg->cp_psy, POWER_SUPPLY_PROP_CP_VBAT_CALIBRATE, &val);
@@ -913,7 +921,10 @@ int smblib_set_fastcharge_mode(struct smb_charger *chg, bool enable)
 		return rc;
 	}
 
-	fastcharge_soc_thr = 90;
+	if (chg->use_bq_pump)
+		fastcharge_soc_thr = 95;
+	else
+		fastcharge_soc_thr = 90;
 
 	if (enable && pval.intval >= fastcharge_soc_thr) {
 		smblib_dbg(chg, PR_MISC, "soc:%d is more than 90"
@@ -2442,6 +2453,12 @@ int smblib_get_prop_batt_status(struct smb_charger *chg,
 	u8 stat;
 	int rc, suspend = 0;
 
+	if (chg->use_bq_pump && (get_client_vote_locked(chg->usb_icl_votable,
+					MAIN_CHG_VOTER) == MAIN_CHARGER_STOP_ICL)) {
+		val->intval = POWER_SUPPLY_STATUS_CHARGING;
+		return 0;
+        }
+
 	if (chg->fake_chg_status_on_debug_batt) {
 		rc = smblib_get_prop_from_bms(chg,
 				POWER_SUPPLY_PROP_DEBUG_BATTERY, &pval);
@@ -2633,6 +2650,17 @@ int smblib_get_prop_batt_charge_type(struct smb_charger *chg,
 	return rc;
 }
 
+static bool is_bq25970_available(struct smb_charger *chg)
+{
+	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
+
+	if (!chg->cp_psy)
+		return false;
+
+	return true;
+}
+
 int smblib_get_prop_batt_health(struct smb_charger *chg,
 				union power_supply_propval *val)
 {
@@ -2652,8 +2680,14 @@ int smblib_get_prop_batt_health(struct smb_charger *chg,
 		   stat);
 
 	if (stat & CHARGER_ERROR_STATUS_BAT_OV_BIT) {
-		rc = smblib_get_prop_from_bms(chg,
-			POWER_SUPPLY_PROP_VOLTAGE_NOW, &pval);
+		if (chg->use_bq_pump && is_bq25970_available(chg)) {
+				rc = power_supply_get_property(chg->cp_psy,
+					POWER_SUPPLY_PROP_TI_BATTERY_VOLTAGE, &pval);
+				pval.intval = pval.intval * 1000;
+		} else {
+			rc = smblib_get_prop_from_bms(chg,
+				POWER_SUPPLY_PROP_VOLTAGE_NOW, &pval);
+		}
 		if (!rc) {
 			/*
 			 * If Vbatt is within 40mV or 80mV above Vfloat, then don't
@@ -2861,6 +2895,13 @@ int smblib_set_prop_battery_slowly_charging(struct smb_charger *chg,
 	return 0;
 }
 
+int smblib_get_prop_battery_bq_input_suspend(struct smb_charger *chg,
+					union power_supply_propval *val)
+{
+	val->intval = chg->bq_input_suspend;
+	return 0;
+}
+
 /***********************
  * BATTERY PSY SETTERS *
  ***********************/
@@ -2886,6 +2927,9 @@ int smblib_set_prop_input_suspend(struct smb_charger *chg,
 			(bool)val->intval ? "suspend" : "resume", rc);
 		return rc;
 	}
+
+	if (chg->use_bq_pump)
+		chg->bq_input_suspend = !!(val->intval);
 
 	power_supply_changed(chg->batt_psy);
 	return rc;
@@ -3041,20 +3085,25 @@ static int smblib_therm_charging(struct smb_charger *chg)
 		thermal_icl_ua = chg->thermal_mitigation_qc2[chg->system_temp_level];
 		break;
 	case POWER_SUPPLY_TYPE_USB_HVDCP_3:
-		if (chg->cp_reason == POWER_SUPPLY_CP_HVDCP3) {
-			if (chg->is_qc_class_a)
-				thermal_fcc_ua =
-					chg->thermal_fcc_qc3_cp[chg->system_temp_level];
-			else if (chg->temp_27W_enable)
-				thermal_fcc_ua =
-					chg->thermal_fcc_qc3_classb_cp[chg->system_temp_level];
-			else
-				thermal_fcc_ua =
-					chg->thermal_fcc_qc3_cp[chg->system_temp_level];
-
-		} else {
+		if (chg->use_bq_pump) {
 			thermal_fcc_ua =
-				chg->thermal_fcc_qc3_normal[chg->system_temp_level];
+				chg->thermal_fcc_qc3_cp[chg->system_temp_level];
+		} else {
+			if (chg->cp_reason == POWER_SUPPLY_CP_HVDCP3) {
+				if (chg->is_qc_class_a)
+					thermal_fcc_ua =
+						chg->thermal_fcc_qc3_cp[chg->system_temp_level];
+				else if (chg->temp_27W_enable)
+					thermal_fcc_ua =
+						chg->thermal_fcc_qc3_classb_cp[chg->system_temp_level];
+				else
+					thermal_fcc_ua =
+						chg->thermal_fcc_qc3_cp[chg->system_temp_level];
+
+			} else {
+				thermal_fcc_ua =
+					chg->thermal_fcc_qc3_normal[chg->system_temp_level];
+			}
 		}
 		break;
 	case POWER_SUPPLY_TYPE_USB_HVDCP_3P5:
@@ -3062,36 +3111,44 @@ static int smblib_therm_charging(struct smb_charger *chg)
 				chg->thermal_fcc_qc3_cp[chg->system_temp_level];
 		break;
 	case POWER_SUPPLY_TYPE_USB_PD:
-		if (chg->cp_reason == POWER_SUPPLY_CP_PPS) {
+		if (chg->use_bq_pump) {
+			if (chg->pps_thermal_level < 0)
+					chg->pps_thermal_level = chg->system_temp_level;
+			pr_err("chg->pps_thermal_level=%d,chg->system_temp_level=%d\n", chg->pps_thermal_level, chg->system_temp_level);
 			thermal_fcc_ua =
-				chg->thermal_fcc_pps_cp[chg->system_temp_level];
+				chg->thermal_fcc_pps_cp[chg->pps_thermal_level];
 		} else {
-			if (chg->voltage_min_uv >= PD_MICRO_5V
-					&& chg->voltage_min_uv < PD_MICRO_5P9V)
-				thermal_icl_ua =
-						chg->thermal_mitigation_pd_base[chg->system_temp_level];
-			else if (chg->voltage_min_uv >= PD_MICRO_5P9V
-						&& chg->voltage_min_uv < PD_MICRO_6P5V)
-				thermal_icl_ua =
-						chg->thermal_mitigation_pd_base[chg->system_temp_level]
-							* PD_6P5V_PERCENT / 100;
-			else if (chg->voltage_min_uv >= PD_MICRO_6P5V
-						&& chg->voltage_min_uv < PD_MICRO_7P5V)
-				thermal_icl_ua =
-						chg->thermal_mitigation_pd_base[chg->system_temp_level]
-							* PD_7P5V_PERCENT / 100;
-			else if (chg->voltage_min_uv >= PD_MICRO_7P5V
-						&& chg->voltage_min_uv <= PD_MICRO_8P5V)
-				thermal_icl_ua =
-						chg->thermal_mitigation_pd_base[chg->system_temp_level]
-							* PD_8P5V_PERCENT / 100;
-			else if (chg->voltage_min_uv >= PD_MICRO_8P5V)
-				thermal_icl_ua =
-						chg->thermal_mitigation_pd_base[chg->system_temp_level]
-							* PD_9V_PERCENT / 100;
-			else
-				thermal_icl_ua =
-						chg->thermal_mitigation_pd_base[chg->system_temp_level];
+			if (chg->cp_reason == POWER_SUPPLY_CP_PPS) {
+				thermal_fcc_ua =
+					chg->thermal_fcc_pps_cp[chg->system_temp_level];
+			} else {
+				if (chg->voltage_min_uv >= PD_MICRO_5V
+						&& chg->voltage_min_uv < PD_MICRO_5P9V)
+					thermal_icl_ua =
+							chg->thermal_mitigation_pd_base[chg->system_temp_level];
+				else if (chg->voltage_min_uv >= PD_MICRO_5P9V
+							&& chg->voltage_min_uv < PD_MICRO_6P5V)
+					thermal_icl_ua =
+							chg->thermal_mitigation_pd_base[chg->system_temp_level]
+								* PD_6P5V_PERCENT / 100;
+				else if (chg->voltage_min_uv >= PD_MICRO_6P5V
+							&& chg->voltage_min_uv < PD_MICRO_7P5V)
+					thermal_icl_ua =
+							chg->thermal_mitigation_pd_base[chg->system_temp_level]
+								* PD_7P5V_PERCENT / 100;
+				else if (chg->voltage_min_uv >= PD_MICRO_7P5V
+							&& chg->voltage_min_uv <= PD_MICRO_8P5V)
+					thermal_icl_ua =
+							chg->thermal_mitigation_pd_base[chg->system_temp_level]
+								* PD_8P5V_PERCENT / 100;
+				else if (chg->voltage_min_uv >= PD_MICRO_8P5V)
+					thermal_icl_ua =
+							chg->thermal_mitigation_pd_base[chg->system_temp_level]
+								* PD_9V_PERCENT / 100;
+				else
+					thermal_icl_ua =
+							chg->thermal_mitigation_pd_base[chg->system_temp_level];
+			}
 		}
 		break;
 	case POWER_SUPPLY_TYPE_USB_DCP:
@@ -3117,7 +3174,7 @@ static int smblib_therm_charging(struct smb_charger *chg)
 
 		if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_HVDCP_3
 				|| chg->real_charger_type == POWER_SUPPLY_TYPE_USB_HVDCP_3P5
-				|| (chg->cp_reason == POWER_SUPPLY_CP_PPS
+				|| ((chg->cp_reason == POWER_SUPPLY_CP_PPS || chg->use_bq_pump)
 				&& chg->real_charger_type == POWER_SUPPLY_TYPE_USB_PD)) {
 			/* if use qc3 or pps charge with cp, also limit icl when high level */
 			if (chg->system_temp_level >= ICL_LIMIT_LEVEL_THR)
@@ -3213,21 +3270,31 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 
 	chg->system_temp_level = val->intval;
 
-	if (chg->system_temp_level >= (chg->thermal_levels - 1)) {
-		if (!chg->cp_disable_votable)
-			chg->cp_disable_votable = find_votable("CP_DISABLE");
-		if (chg->cp_disable_votable)
-			vote(chg->cp_disable_votable, THERMAL_DAEMON_VOTER, true, 0);
-		return vote(chg->chg_disable_votable,
-			THERMAL_DAEMON_VOTER, true, 0);
+	if (!chg->use_bq_pump) {
+		if (chg->system_temp_level >= (chg->thermal_levels - 1)) {
+			if (!chg->cp_disable_votable)
+				chg->cp_disable_votable = find_votable("CP_DISABLE");
+			if (chg->cp_disable_votable)
+				vote(chg->cp_disable_votable, THERMAL_DAEMON_VOTER, true, 0);
+			return vote(chg->chg_disable_votable,
+				THERMAL_DAEMON_VOTER, true, 0);
+		}
 	}
 
 	vote(chg->chg_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
 
-	if (chg->cp_disable_votable)
+	if (!chg->use_bq_pump && chg->cp_disable_votable)
 		vote(chg->cp_disable_votable, THERMAL_DAEMON_VOTER, false, 0);
 
 #ifdef CONFIG_THERMAL
+	if (chg->use_bq_pump
+			&& chg->real_charger_type == POWER_SUPPLY_TYPE_USB_PD) {
+		if (chg->pps_fcc_therm_work_disabled) {
+			chg->pps_thermal_level = chg->system_temp_level;
+			smblib_therm_charging(chg);
+		} else
+			schedule_delayed_work(&chg->thermal_setting_work, 3 * HZ);
+	} else
 		smblib_therm_charging(chg);
 #else
 	if (chg->system_temp_level == 0)
@@ -3420,6 +3487,11 @@ int smblib_dp_dm(struct smb_charger *chg, int val)
 	int target_icl_ua, rc = 0;
 	union power_supply_propval pval;
 	u8 stat;
+
+	if (chg->use_bq_pump) {
+		pr_info("dp_dm is controled by our self\n");
+		return rc;
+	}
 
 	/* if raise_vbus work is running, ignore dp_dm pulses */
 	if (chg->raise_vbus_to_detect)
@@ -3663,6 +3735,19 @@ int smblib_dp_dm_bq(struct smb_charger *chg, int val)
 			smblib_dbg(chg, PR_PARALLEL, "DP_DM_DP_PULSE rc=%d cnt=%d\n", rc, chg->pulse_cnt);
 		}
 
+		/*
+		 * if use class_a qc, and slave ic is charge pump, should limit
+		 * maxium icl to 1.9A, as VBUS will raise to about 9V to 9.8V,
+		 * so we set icl to 1.9A when vbus raise above 7.4V
+		 */
+		if (chg->is_qc_class_a && chg->use_bq_pump) {
+			if (chg->pulse_cnt >= HIGH_NUM_PULSE_THR
+					 && !chg->high_vbus_detected) {
+				vote(chg->usb_icl_votable, QC_A_CP_ICL_MAX_VOTER, true,
+					HVDCP_CLASS_A_FOR_CP_UA);
+				chg->high_vbus_detected = true;
+			}
+		}
 		break;
 
 	case POWER_SUPPLY_DP_DM_DM_PULSE:
@@ -3671,6 +3756,18 @@ int smblib_dp_dm_bq(struct smb_charger *chg, int val)
 			chg->pulse_cnt--;
 		smblib_dbg(chg, PR_PARALLEL, "DP_DM_DM_PULSE rc=%d cnt=%d\n",
 				rc, chg->pulse_cnt);
+		/*
+		 * if use class_a qc, and slave ic is charge pump, should restore
+		 * icl to 2.4A when charge pump is not working for class_a qc
+		 */
+		if (chg->is_qc_class_a && chg->use_bq_pump) {
+			if (chg->pulse_cnt < HIGH_NUM_PULSE_THR
+					 && chg->high_vbus_detected) {
+				vote(chg->usb_icl_votable, QC_A_CP_ICL_MAX_VOTER, false,
+					0);
+				chg->high_vbus_detected = false;
+			}
+		}
 		break;
 
 	case POWER_SUPPLY_DP_DM_FORCE_5V:
@@ -3933,12 +4030,17 @@ static void smblib_conn_therm_work(struct work_struct *work)
 				smblib_set_vbus_disable(chg, true);
 			} else {
 				smblib_masked_write(chg, DCDC_CMD_OTG_REG, OTG_EN_BIT, 0);
+				if (chg->use_bq_pump)
+					chg->bq_input_suspend = true;
 			}
 		} else {
 			smblib_dbg(chg, PR_OEM, "connect temp normal recovery vbus\n");
 			vote(chg->usb_icl_votable, SW_CONN_THERM_VOTER, false, 0);
 			if (gpio_is_valid(chg->vbus_disable_gpio)) {
 				smblib_set_vbus_disable(chg, false);
+			} else {
+				if (chg->use_bq_pump)
+					chg->bq_input_suspend = false;
 			}
 		}
 	}
@@ -4063,6 +4165,8 @@ out:
 		 */
 		if (chg->thermal_status == TEMP_SHUT_DOWN_SMB)
 			goto exit;
+		if (chg->use_bq_pump)
+			chg->bq_input_suspend = !!suspend_input;
 
 		/* Suspend input if SHDN threshold reached */
 		vote(chg->dc_suspend_votable, SW_THERM_REGULATION_VOTER,
@@ -4353,6 +4457,23 @@ int smblib_get_prop_usb_online(struct smb_charger *chg,
 					CHG_TERMINATION_VOTER)) {
 		rc = smblib_get_prop_usb_present(chg, val);
 		return rc;
+	}
+
+	if (chg->use_bq_pump) {
+		rc = smblib_get_prop_usb_present(chg, &pval);
+		if (rc < 0) {
+			smblib_err(chg, "Couldn't get usb present rc = %d\n", rc);
+			return rc;
+		}
+
+		usb_present = pval.intval;
+
+		if (usb_present && chg->use_bq_pump
+					&& (get_client_vote_locked(chg->usb_icl_votable,
+							MAIN_CHG_VOTER) == MAIN_CHARGER_STOP_ICL)) {
+			val->intval = true;
+			return rc;
+		}
 	}
 
 	rc = smblib_read(chg, POWER_PATH_STATUS_REG, &stat);
@@ -5649,6 +5770,14 @@ int smblib_set_prop_pd_active(struct smb_charger *chg,
 
 	smblib_apsd_enable(chg, !chg->pd_active);
 
+	if (!chg->pd && chg->use_bq_pump) {
+		chg->pd = devm_usbpd_get_by_phandle(chg->dev,
+				"qcom,usbpd-phandle");
+		if (IS_ERR_OR_NULL(chg->pd))
+			pr_err("Failed to get pd handle %ld\n",
+					PTR_ERR(chg->pd));
+	}
+
 	update_sw_icl_max(chg, apsd->pst);
 
 	if (chg->pd_active) {
@@ -6470,6 +6599,13 @@ static int check_reduce_fcc_condition(struct smb_charger *chg)
 	int rc, ibat = 0;
 	int effective_fcc = 0;
 
+	if (!chg->cp_psy) {
+		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
+		if (!chg->cp_psy)
+			pr_err("cp_psy not found\n");
+			return 0;
+	}
+
 	rc = power_supply_get_property(chg->cp_psy,
 				POWER_SUPPLY_PROP_CHARGING_ENABLED, &val);
 	if (rc < 0) {
@@ -6689,8 +6825,15 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 					msecs_to_jiffies(CHARGER_RECHECK_DELAY_MS));
 		schedule_delayed_work(&chg->cc_un_compliant_charge_work,
 					msecs_to_jiffies(CC_UN_COMPLIANT_START_DELAY_MS));
+		if (chg->use_bq_pump)
+			schedule_delayed_work(&chg->reduce_fcc_work,
+						msecs_to_jiffies(ESR_WORK_TIME_180S));
 	} else {
 		cancel_delayed_work_sync(&chg->charger_type_recheck);
+		if (chg->use_bq_pump) {
+			cancel_delayed_work_sync(&chg->reduce_fcc_work);
+			vote(chg->fcc_votable, ESR_WORK_VOTER, false, 0);
+		}
 
 		/* Disable SW Thermal Regulation */
 		rc = smblib_set_sw_thermal_regulation(chg, false);
@@ -6992,6 +7135,8 @@ static void smblib_raise_qc3_vbus_work(struct work_struct *work)
 		if (chg->pd_hard_reset) {
 			if (chg->detect_low_power_qc3_charger)
 				chg->detect_low_power_qc3_charger = false;
+			if (chg->use_bq_pump)
+				vote(chg->usb_icl_votable, HVDCP3_START_ICL_VOTER, false, 0);
 			pr_info("pd hard reset, no need to raise vbus now\n");
 			return;
 		}
@@ -7061,12 +7206,17 @@ static void smblib_raise_qc3_vbus_work(struct work_struct *work)
 			}
 		}
 
-	/* select charge pump as second charger */
-	rc = smblib_select_sec_charger(chg, POWER_SUPPLY_CHARGER_SEC_CP,
-					POWER_SUPPLY_CP_HVDCP3, false);
-	if (rc < 0)
-		dev_err(chg->dev,
-			"Couldn't enable secondary chargers  rc=%d\n", rc);
+	if (chg->use_bq_pump)
+		vote(chg->usb_icl_votable, HVDCP3_START_ICL_VOTER, false, 0);
+
+	if (!chg->use_bq_pump) {
+		/* select charge pump as second charger */
+		rc = smblib_select_sec_charger(chg, POWER_SUPPLY_CHARGER_SEC_CP,
+						POWER_SUPPLY_CP_HVDCP3, false);
+		if (rc < 0)
+			dev_err(chg->dev,
+				"Couldn't enable secondary chargers  rc=%d\n", rc);
+	}
 
 #ifdef CONFIG_THERMAL
 		if (chg->cp_reason == POWER_SUPPLY_CP_HVDCP3)
@@ -7164,7 +7314,7 @@ static void smblib_handle_hvdcp_3p0_auth_done(struct smb_charger *chg,
 
 	/* for QC3, switch to CP if present */
 	if ((apsd_result->bit & QC_3P0_BIT)
-			&& chg->sec_cp_present) {
+			&& (chg->sec_cp_present || chg->use_bq_pump)) {
 		if (!chg->qc_class_ab) {
 			rc = smblib_select_sec_charger(chg, POWER_SUPPLY_CHARGER_SEC_CP,
 						POWER_SUPPLY_CP_HVDCP3, false);
@@ -7174,8 +7324,13 @@ static void smblib_handle_hvdcp_3p0_auth_done(struct smb_charger *chg,
 		} else {
 			if (!chg->detect_low_power_qc3_charger &&
 					(!chg->qc3p5_supported || !chg->qc3p5_authenticated)) {
-				vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
-						HVDCP_START_CURRENT_UA);
+				if (!chg->use_bq_pump)
+					vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
+							HVDCP_START_CURRENT_UA);
+				else {
+					vote(chg->usb_icl_votable, HVDCP3_START_ICL_VOTER, true,
+							HVDCP_START_CURRENT_UA_FOR_BQ);
+				}
 				schedule_delayed_work(&chg->raise_qc3_vbus_work, 0);
 				chg->detect_low_power_qc3_charger = true;
 			}
@@ -7223,7 +7378,7 @@ static void smblib_handle_hvdcp_check_timeout(struct smb_charger *chg,
 					vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
 						HVDCP2_CURRENT_UA);
 				} else {
-					if chg->six_pin_step_charge_enable
+					if (chg->six_pin_step_charge_enable || chg->use_bq_pump)
 						vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
 							HVDCP_CLASS_B_CURRENT_UA);
 					else
@@ -7712,6 +7867,11 @@ static void typec_src_removal(struct smb_charger *chg)
 	vote(chg->fcc_votable, PD_VERIFED_VOTER, true, PD_UNVERIFED_CURRENT);
 	vote(chg->usb_icl_votable, QC_A_CP_ICL_MAX_VOTER, false, 0);
 	vote(chg->usb_icl_votable, QC2_UNSUPPORTED_VOTER, false, 0);
+	if (chg->use_bq_pump) {
+		vote(chg->usb_icl_votable, HVDCP3_START_ICL_VOTER, false, 0);
+		vote(chg->usb_icl_votable, MAIN_CHG_VOTER, false, 0);
+		vote(chg->fcc_votable, SLOWLY_CHARGING_VOTER, false, 0);
+	}
 
 	/* Remove SW thermal regulation WA votes */
 	vote(chg->usb_icl_votable, SW_THERM_REGULATION_VOTER, false, 0);
@@ -9836,6 +9996,10 @@ int smblib_init(struct smb_charger *chg)
 					smblib_dual_role_check_work);
 	INIT_DELAYED_WORK(&chg->pr_swap_detach_work,
 					smblib_pr_swap_detach_work);
+	if (chg->use_bq_pump) {
+		INIT_DELAYED_WORK(&chg->reduce_fcc_work, reduce_fcc_work);
+		INIT_DELAYED_WORK(&chg->thermal_setting_work, smblib_thermal_setting_work);
+	}
 	INIT_DELAYED_WORK(&chg->pr_lock_clear_work,
 					smblib_pr_lock_clear_work);
 	if (chg->dcin_uusb_over_gpio_en)
