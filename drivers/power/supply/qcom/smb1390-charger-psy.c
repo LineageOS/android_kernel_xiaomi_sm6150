@@ -224,6 +224,7 @@ struct smb1390 {
 	u32			cp_role;
 	enum isns_mode		current_capability;
 	bool			batt_soc_validated;
+	bool			six_pin_batt;
 	int			cp_slave_thr_taper_ua;
 	int			cc_mode_taper_main_icl_ua;
 };
@@ -1205,7 +1206,8 @@ static void smb1390_status_change_work(struct work_struct *work)
 		if (rc < 0) {
 			pr_err("Couldn't get charge type rc=%d\n", rc);
 		} else if (pval.intval ==
-				POWER_SUPPLY_CHARGE_TYPE_TAPER) {
+				POWER_SUPPLY_CHARGE_TYPE_TAPER
+					&& !chip->six_pin_batt) {
 			/*
 			 * mutual exclusion is already guaranteed by
 			 * chip->status_change_running
@@ -1662,6 +1664,9 @@ static int smb1390_parse_dt(struct smb1390 *chip)
 	of_property_read_u32(chip->dev->of_node,
 			     "qcom,cc-mode-taper-main-icl-ua",
 			     &chip->cc_mode_taper_main_icl_ua);
+	chip->six_pin_batt = of_property_read_bool(chip->dev->of_node,
+				"mi,six-pin-batt");
+
 	return 0;
 }
 

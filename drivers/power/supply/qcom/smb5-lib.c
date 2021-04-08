@@ -2283,6 +2283,20 @@ static int smblib_get_batt_voltage_now(struct smb_charger *chg,
 	return rc;
 }
 
+static void smblib_get_start_vbat_before_step_charge(struct smb_charger *chg)
+{
+	int rc;
+	union power_supply_propval pval = {0, };
+
+	rc = smblib_get_batt_voltage_now(chg, &pval);
+	if (!rc)
+		chg->start_step_vbat = pval.intval;
+	else
+		pr_err("could not get vbat vol from bms\n");
+
+	pr_err("chg->start_step_vbat: %d\n", chg->start_step_vbat);
+}
+
 /********************
  * BATT PSY GETTERS *
  ********************/
@@ -2620,7 +2634,19 @@ int smblib_get_prop_batt_health(struct smb_charger *chg,
 			 * treat it as overvoltage.
 			 */
 			effective_fv_uv = get_effective_result_locked(chg->fv_votable);
-			over_voltage_thr_uv = effective_fv_uv + 40000;
+			/*
+			 * as six pin battery vbat is much higher than cell voltage
+			 * we should add more buffer to over voltage threshold
+			 * to report over voltage health
+			 */
+			if (chg->six_pin_step_charge_enable) {
+				if (effective_fv_uv == WARM_VFLOAT_UV)
+					over_voltage_thr_uv = effective_fv_uv + 80000;
+				else
+					over_voltage_thr_uv = chg->batt_profile_fv_uv + 50000;
+			} else {
+				over_voltage_thr_uv = effective_fv_uv + 40000;
+			}
 			if (pval.intval >= over_voltage_thr_uv) {
 				val->intval = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 				smblib_err(chg, "battery over-voltage vbat_fg = %duV, fv = %duV\n",
@@ -5637,6 +5663,13 @@ int smblib_set_prop_pd_active(struct smb_charger *chg,
 				chg->cp_reason = POWER_SUPPLY_CP_PPS;
 		}
 
+		if (chg->pd_active == POWER_SUPPLY_PD_PPS_ACTIVE
+						&& chg->six_pin_step_charge_enable) {
+			/* start six pin battery step charge monitor work */
+			schedule_delayed_work(&chg->six_pin_batt_step_chg_work,
+					msecs_to_jiffies(STEP_CHG_DELAYED_START_MS));
+		}
+
 #ifdef CONFIG_THERMAL
 		smblib_therm_charging(chg);
 #endif
@@ -6535,6 +6568,8 @@ void smblib_usb_plugin_hard_reset_locked(struct smb_charger *chg)
 		/* Remove FCC_STEPPER 1.5A init vote to allow FCC ramp up */
 		if (chg->fcc_stepper_enable)
 			vote(chg->fcc_votable, FCC_STEPPER_VOTER, false, 0);
+		if (chg->six_pin_step_charge_enable)
+			smblib_get_start_vbat_before_step_charge(chg);
 	} else {
 		if (chg->wa_flags & BOOST_BACK_WA) {
 			data = chg->irq_info[SWITCHER_POWER_OK_IRQ].irq_data;
@@ -6616,6 +6651,9 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 		/* Remove FCC_STEPPER 1.5A init vote to allow FCC ramp up */
 		if (chg->fcc_stepper_enable)
 			vote(chg->fcc_votable, FCC_STEPPER_VOTER, false, 0);
+
+		if (chg->six_pin_step_charge_enable)
+			smblib_get_start_vbat_before_step_charge(chg);
 
 		/* Schedule work to enable parallel charger */
 		vote(chg->awake_votable, PL_DELAY_VOTER, true, 0);
@@ -7116,6 +7154,14 @@ static void smblib_handle_hvdcp_3p0_auth_done(struct smb_charger *chg,
 				chg->detect_low_power_qc3_charger = true;
 			}
 		}
+		/* start six pin battery step charge monitor work */
+		if (chg->six_pin_step_charge_enable) {
+			if (!chg->already_start_step_charge_work) {
+				schedule_delayed_work(&chg->six_pin_batt_step_chg_work,
+						msecs_to_jiffies(STEP_CHG_DELAYED_START_MS));
+				chg->already_start_step_charge_work = true;
+			}
+		}
 	} else if ((apsd_result->bit & QC_2P0_BIT)
 			&& (!chg->qc2_unsupported)) {
 		pr_info("force 9V for QC2 charger\n");
@@ -7151,8 +7197,12 @@ static void smblib_handle_hvdcp_check_timeout(struct smb_charger *chg,
 					vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
 						HVDCP2_CURRENT_UA);
 				} else {
-					vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
-						HVDCP_CLASS_A_FOR_CP_UA);
+					if chg->six_pin_step_charge_enable
+						vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
+							HVDCP_CLASS_B_CURRENT_UA);
+					else
+						vote(chg->usb_icl_votable, SW_ICL_MAX_VOTER, true,
+							HVDCP_CLASS_A_FOR_CP_UA);
 				}
 			}
 		} else {
@@ -7656,6 +7706,16 @@ static void typec_src_removal(struct smb_charger *chg)
 	chg->voltage_max_uv = MICRO_5V;
 	chg->usbin_forced_max_uv = 0;
 	chg->chg_param.forced_main_fcc = 0;
+
+	if (chg->six_pin_step_charge_enable) {
+		chg->init_start_vbat_checked = false;
+		chg->already_start_step_charge_work = false;
+		chg->trigger_taper_count = 0;
+		chg->index_vfloat = 0;
+		vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER, false, 0);
+		vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER, false, 0);
+		cancel_delayed_work_sync(&chg->six_pin_batt_step_chg_work);
+	}
 
 	/* Reset CC mode votes */
 	vote(chg->fcc_main_votable, MAIN_FCC_VOTER, false, 0);
@@ -8413,6 +8473,100 @@ static void smblib_usbov_dbc_work(struct work_struct *work)
 	smblib_dbg(chg, PR_MISC, "Resetting USBOV debounce\n");
 	chg->dbc_usbov = false;
 	vote(chg->awake_votable, USBOV_DBC_VOTER, false, 0);
+}
+
+static int smblib_get_step_vfloat_index(struct smb_charger *chg,
+				int val)
+{
+	int i;
+
+	/* select correct index by compare start_vbat and range vfloat threshold */
+	for (i = 0; i <= ARRAY_SIZE(chg->six_pin_step_cfg) - 1; i++) {
+		if (val < (chg->six_pin_step_cfg[i].vfloat_step_uv - VBAT_FOR_STEP_HYS_UV))
+			break;
+	}
+
+	if (i >= ARRAY_SIZE(chg->six_pin_step_cfg) - 1)
+		return ARRAY_SIZE(chg->six_pin_step_cfg) - 1;
+
+	return i;
+}
+
+static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
+{
+	struct smb_charger *chg = container_of(work, struct smb_charger,
+						six_pin_batt_step_chg_work.work);
+
+	int rc = 0;
+	int input_present;
+	int main_charge_type;
+	int interval_ms = STEP_CHG_DELAYED_MONITOR_MS;
+	union power_supply_propval pval = {0, };
+
+	rc = smblib_is_input_present(chg, &input_present);
+	if (rc < 0)
+		return;
+
+	pr_err("input_present: %d\n", input_present);
+	if (input_present == INPUT_NOT_PRESENT) {
+		if (is_client_vote_enabled(chg->fv_votable,
+						SIX_PIN_VFLOAT_VOTER))
+			vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER, false, 0);
+		if (is_client_vote_enabled(chg->fcc_votable,
+						SIX_PIN_VFLOAT_VOTER))
+			vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER, false, 0);
+		return;
+	}
+
+	if (chg->start_step_vbat >= VBAT_FOR_STEP_MIN_UV) {
+		pr_err("start step vbat is too high, no need do step charge\n");
+		return;
+	}
+
+	/* set init start vfloat according to chg->start_step_vbat */
+	if (!chg->init_start_vbat_checked) {
+		chg->index_vfloat =
+				smblib_get_step_vfloat_index(chg, chg->start_step_vbat);
+		vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER,
+				true, chg->six_pin_step_cfg[chg->index_vfloat].vfloat_step_uv);
+		vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER,
+				true, chg->six_pin_step_cfg[chg->index_vfloat].fcc_step_ua);
+		chg->init_start_vbat_checked = true;
+	}
+
+	rc = smblib_get_prop_batt_charge_type(chg, &pval);
+	if (rc < 0) {
+		pr_err("Couldn't get batt charge type rc=%d\n", rc);
+		return;
+	}
+	main_charge_type = pval.intval;
+	pr_err("main_charge_type: %d\n", main_charge_type);
+
+	if (main_charge_type == POWER_SUPPLY_CHARGE_TYPE_TAPER)
+		chg->trigger_taper_count++;
+	else
+		chg->trigger_taper_count = 0;
+
+	if (chg->trigger_taper_count >= MAX_COUNT_OF_IBAT_STEP) {
+		chg->index_vfloat++;
+		chg->trigger_taper_count = 0;
+		if (chg->index_vfloat < MAX_STEP_ENTRIES) {
+			vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER,
+					true, chg->six_pin_step_cfg[chg->index_vfloat].fcc_step_ua);
+			vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER,
+					true, chg->six_pin_step_cfg[chg->index_vfloat].vfloat_step_uv);
+		}
+		if (chg->index_vfloat >= MAX_STEP_ENTRIES)
+			chg->index_vfloat = MAX_STEP_ENTRIES - 1;
+	}
+
+	if (main_charge_type == POWER_SUPPLY_CHARGE_TYPE_TAPER)
+		interval_ms = STEP_CHG_DELAYED_QUICK_MONITOR_MS;
+	else
+		interval_ms = STEP_CHG_DELAYED_MONITOR_MS;
+
+	schedule_delayed_work(&chg->six_pin_batt_step_chg_work,
+				msecs_to_jiffies(interval_ms));
 }
 
 #define USB_OV_DBC_PERIOD_MS		1000
@@ -9640,6 +9794,8 @@ int smblib_init(struct smb_charger *chg)
 	INIT_DELAYED_WORK(&chg->raise_qc3_vbus_work, smblib_raise_qc3_vbus_work);
 	INIT_DELAYED_WORK(&chg->charger_type_recheck, smblib_charger_type_recheck);
 	INIT_DELAYED_WORK(&chg->status_report_work, smblib_status_report_work);
+	INIT_DELAYED_WORK(&chg->six_pin_batt_step_chg_work,
+					smblib_six_pin_batt_step_chg_work);
 	INIT_DELAYED_WORK(&chg->cc_un_compliant_charge_work,
 			smblib_cc_un_compliant_charge_work);
 	INIT_DELAYED_WORK(&chg->conn_therm_work,
@@ -9825,6 +9981,7 @@ int smblib_deinit(struct smb_charger *chg)
 		cancel_delayed_work_sync(&chg->thermal_regulation_work);
 		cancel_delayed_work_sync(&chg->conn_therm_work);
 		cancel_delayed_work_sync(&chg->usbov_dbc_work);
+		cancel_delayed_work_sync(&chg->six_pin_batt_step_chg_work);
 		cancel_delayed_work_sync(&chg->role_reversal_check);
 		cancel_delayed_work_sync(&chg->pr_swap_detach_work);
 		power_supply_unreg_notifier(&chg->nb);

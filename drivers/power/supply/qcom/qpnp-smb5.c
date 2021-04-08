@@ -400,6 +400,63 @@ static int smb5_configure_internal_pull(struct smb_charger *chg, int type,
 	return rc;
 }
 
+static int read_step_chg_range_data_from_node(struct device_node *node,
+		const char *prop_str, struct six_pin_step_data *ranges)
+{
+	int rc = 0, length, per_tuple_length, tuples;
+
+	if (!node || !prop_str || !ranges) {
+		pr_err("Invalid parameters passed\n");
+		return -EINVAL;
+	}
+
+	rc = of_property_count_elems_of_size(node, prop_str, sizeof(u32));
+	if (rc < 0) {
+		pr_err("Count %s failed, rc=%d\n", prop_str, rc);
+		return rc;
+	}
+
+	length = rc;
+	per_tuple_length = sizeof(struct six_pin_step_data) / sizeof(u32);
+	if (length % per_tuple_length) {
+		pr_err("%s length (%d) should be multiple of %d\n",
+				prop_str, length, per_tuple_length);
+		return -EINVAL;
+	}
+	tuples = length / per_tuple_length;
+
+	if (tuples > MAX_STEP_ENTRIES) {
+		pr_err("too many entries(%d), only %d allowed\n",
+				tuples, MAX_STEP_ENTRIES);
+		return -EINVAL;
+	}
+
+	rc = of_property_read_u32_array(node, prop_str,
+			(u32 *)ranges, length);
+	if (rc) {
+		pr_err("Read %s failed, rc=%d\n", prop_str, rc);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int smb5_charge_step_charge_init(struct smb_charger *chg,
+					struct device_node *node)
+{
+	int rc = 0;
+
+	rc = read_step_chg_range_data_from_node(node,
+			"mi,six-pin-step-chg-params",
+			chg->six_pin_step_cfg);
+	if (rc < 0) {
+		pr_debug("Read mi,six-pin-step-chg-params failed charger node, rc=%d\n",
+					rc);
+		chg->six_pin_step_charge_enable = false;
+	}
+
+	return rc;
+}
 #define MICRO_1P5A				1500000
 #define MICRO_P1A				100000
 #define MICRO_1PA				1000000
@@ -454,6 +511,9 @@ static int smb5_parse_dt(struct smb5 *chip)
 
 	chg->qc_class_ab = of_property_read_bool(node,
 				"qcom,distinguish-qc-class-ab");
+
+	chg->six_pin_step_charge_enable = of_property_read_bool(node,
+				"mi,six-pin-step-chg");
 
 	chg->dynamic_fv_enabled = of_property_read_bool(node,
 				"qcom,dynamic-fv-enable");
@@ -812,6 +872,15 @@ static int smb5_parse_dt(struct smb5 *chip)
 
 	chip->dt.adc_based_aicl = of_property_read_bool(node,
 					"qcom,adc-based-aicl");
+	if (chg->six_pin_step_charge_enable) {
+		rc = smb5_charge_step_charge_init(chg, node);
+		if (!rc) {
+			for (i = 0; i < MAX_STEP_ENTRIES; i++)
+				pr_err("six-pin-step-chg-cfg: %duV, %duA\n",
+						chg->six_pin_step_cfg[i].vfloat_step_uv,
+						chg->six_pin_step_cfg[i].fcc_step_ua);
+		}
+	}
 
 	/* Extract ADC channels */
 	rc = smblib_get_iio_channel(chg, "mid_voltage", &chg->iio.mid_chan);
@@ -1742,18 +1811,28 @@ static int smb5_usb_main_set_prop(struct power_supply *psy,
 		if (rc < 0)
 			offset_ua = 0;
 
-		if (chg->cp_psy) {
-			rc = power_supply_get_property(chg->cp_psy,
-					POWER_SUPPLY_PROP_PARALLEL_OUTPUT_MODE, &pval);
-			if (rc >= 0)
-				parallel_output_mode = pval.intval;
-			}
-			/* only parallel output mode is output to vbat need add offset */
-			if (parallel_output_mode == POWER_SUPPLY_PL_OUTPUT_VBAT)
-				rc = smblib_set_charge_param(chg, &chg->param.fcc, val->intval + offset_ua);
-			else
-				rc = smblib_set_charge_param(chg, &chg->param.fcc, val->intval);
-		}
+		if (chg->six_pin_step_charge_enable) {
+                        rc = smblib_get_prop_from_bms(chg, POWER_SUPPLY_PROP_TEMP, &pval);
+                        /* if temp out of soft jeita normal zone, do not add fast charge current offset */
+                        if (pval.intval >= CP_WARM_THRESHOLD - SOFT_JEITA_HYSTERESIS || pval.intval <= CP_COOL_THRESHOLD + SOFT_JEITA_HYSTERESIS
+                                        || chg->index_vfloat == MAX_STEP_ENTRIES - 1)
+
+                                rc = smblib_set_charge_param(chg, &chg->param.fcc, val->intval);
+                        else
+                                rc = smblib_set_charge_param(chg, &chg->param.fcc,val->intval + offset_ua);
+                } else {
+                        if (chg->cp_psy) {
+                                rc = power_supply_get_property(chg->cp_psy,
+                                                POWER_SUPPLY_PROP_PARALLEL_OUTPUT_MODE, &pval);
+                                if (rc >= 0)
+                                        parallel_output_mode = pval.intval;
+                        }
+                        /* only parallel output mode is output to vbat need add offset */
+                        if (parallel_output_mode == POWER_SUPPLY_PL_OUTPUT_VBAT)
+                                rc = smblib_set_charge_param(chg, &chg->param.fcc, val->intval + offset_ua);
+                        else
+                                rc = smblib_set_charge_param(chg, &chg->param.fcc, val->intval);
+                }
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		rc = smblib_set_icl_current(chg, val->intval);
