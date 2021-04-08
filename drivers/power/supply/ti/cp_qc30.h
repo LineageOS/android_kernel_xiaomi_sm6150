@@ -101,8 +101,13 @@ enum hvdcp3_type {
 
 #define MAX_THERMAL_LEVEL			13
 /* jeita related */
+#ifdef CONFIG_K6_CHARGE
 #define JEITA_WARM_THR			480
 #define JEITA_COOL_NOT_ALLOW_CP_THR			100
+#else
+#define JEITA_WARM_THR			480
+#define JEITA_COOL_NOT_ALLOW_CP_THR			100
+#endif
 
 
 /*

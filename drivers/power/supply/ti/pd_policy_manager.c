@@ -1225,6 +1225,29 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 		break;
 
 	case PD_PM_STATE_FC2_ENTRY_2:
+#ifdef CONFIG_K6_CHARGE
+		pr_info("bus_err_st:%d, req_vol:%dmV, cur_vol:%d, req_curr:%d, vbat:%d, retry:%d\n",
+				pdpm->cp.bus_error_status, pdpm->request_voltage, pdpm->cp.vbus_volt, pdpm->request_current, pdpm->cp.vbat_volt, tune_vbus_retry);
+		if (pdpm->cp.bus_error_status == VBUS_ERROR_LOW ||
+				(pdpm->cp.vbus_volt < pdpm->cp.vbat_volt * 2 + 300 && pdpm->cp.sc8551_charge_mode != SC8551_CHARGE_MODE_BYPASS) ||
+				(pdpm->cp.vbus_volt < pdpm->cp.vbat_volt + BUS_VOLT_INIT_UP && pdpm->cp.sc8551_charge_mode == SC8551_CHARGE_MODE_BYPASS)) {
+			tune_vbus_retry++;
+			pdpm->request_voltage += STEP_MV;
+			usbpd_select_pdo(pdpm->pd, pdpm->apdo_selected_pdo,
+						pdpm->request_voltage * 1000,
+						pdpm->request_current * 1000);
+		} else if (pdpm->cp.bus_error_status == VBUS_ERROR_HIGH) {
+			tune_vbus_retry++;
+			pdpm->request_voltage -= STEP_MV;
+			usbpd_select_pdo(pdpm->pd, pdpm->apdo_selected_pdo,
+						pdpm->request_voltage * 1000,
+						pdpm->request_current * 1000);
+		} else {
+			pr_info("adapter volt tune ok, retry %d times\n", tune_vbus_retry);
+					usbpd_pm_move_state(pdpm, PD_PM_STATE_FC2_ENTRY_3);
+			break;
+		}
+#else
 		pr_info("tune adapter volt %d , vbatt %d\n",
 					pdpm->cp.vbus_volt, pdpm->cp.vbat_volt);
 		if (pdpm->cp.vbus_volt < (pdpm->cp.vbat_volt * 2 + BUS_VOLT_INIT_UP - 50)) {
@@ -1244,6 +1267,7 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 					usbpd_pm_move_state(pdpm, PD_PM_STATE_FC2_ENTRY_3);
 			break;
 		}
+#endif
 		if (tune_vbus_retry > 60) {
 			if (retry_count < 1) {
 				usbpd_pm_move_state(pdpm, PD_PM_STATE_FC2_ENTRY_1);
@@ -1703,3 +1727,4 @@ module_exit(usbpd_pm_exit);
 MODULE_AUTHOR("Fei Jiang<jiangfei1@xiaomi.com>");
 MODULE_DESCRIPTION("Xiaomi usb pd statemachine for bq");
 MODULE_LICENSE("GPL");
+

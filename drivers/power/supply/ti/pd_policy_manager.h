@@ -73,10 +73,17 @@ enum pm_state {
 #define NON_VERIFIED_PPS_FCC_MAX		3000
 #define MAX_THERMAL_LEVEL			13
 /* jeita related */
+#ifdef CONFIG_K6_CHARGE
 #define JEITA_WARM_THR			480
 #define JEITA_COOL_THR			100
 #define JEITA_BYPASS_WARM_THR		480
 #define JEITA_BYPASS_COOL_THR		100
+#else
+#define JEITA_WARM_THR			480
+#define JEITA_COOL_THR			100
+#define JEITA_BYPASS_WARM_THR		480
+#define JEITA_BYPASS_COOL_THR		100
+#endif
 
 #define PDO_MAX_NUM			7
 /*
