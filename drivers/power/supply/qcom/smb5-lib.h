@@ -204,6 +204,7 @@ enum print_reason {
 #define VBAT_FOR_STEP_HYS_UV			20000
 
 #define MAIN_ICL_MIN			100000
+#define SIX_PIN_VFLOAT_VOTER		"SIX_PIN_VFLOAT_VOTER"
 #define WARM_VFLOAT_UV			4100000
 
 /* ffc related */
@@ -438,6 +439,12 @@ enum icl_override_mode {
 /* EXTCON_USB and EXTCON_USB_HOST are mutually exclusive */
 static const u32 smblib_extcon_exclusive[] = {0x3, 0};
 
+/* six pin battery data struct */
+struct six_pin_step_data {
+	u32 vfloat_step_uv;
+	u32 fcc_step_ua;
+};
+
 struct smb_regulator {
 	struct regulator_dev	*rdev;
 	struct regulator_desc	rdesc;
@@ -611,6 +618,7 @@ struct smb_charger {
 	struct delayed_work	pr_lock_clear_work;
 	struct delayed_work	micro_usb_switch_work;
 	struct delayed_work	reg_work;
+	struct delayed_work	six_pin_batt_step_chg_work;
 	struct delayed_work	reduce_fcc_work;
 	struct delayed_work	status_report_work;
 	struct delayed_work	thermal_setting_work;
@@ -819,6 +827,14 @@ struct smb_charger {
 	bool			reg_dump_enable;
 	/* for 27W charge*/
 	bool			temp_27W_enable;
+
+	/* used for 6pin new battery step charge */
+	bool			six_pin_step_charge_enable;
+	bool			init_start_vbat_checked;
+	struct six_pin_step_data			six_pin_step_cfg[MAX_STEP_ENTRIES];
+	u32			start_step_vbat;
+	int			trigger_taper_count;
+	int			index_vfloat;
 
 	/* fast full charge related */
 	int			chg_term_current_thresh_hi_from_dts;
