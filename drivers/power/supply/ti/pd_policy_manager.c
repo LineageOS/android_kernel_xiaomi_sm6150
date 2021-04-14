@@ -36,6 +36,7 @@
 #define BATT_FAST_CHG_CURR		6000
 #define	BUS_OVP_THRESHOLD		12000
 #define	BUS_OVP_ALARM_THRESHOLD		9500
+#define	APDO_MAX_VOLT		11000
 
 #define BUS_VOLT_INIT_UP		400
 
@@ -855,7 +856,8 @@ static void usbpd_pm_evaluate_src_caps(struct usbpd_pm *pdpm)
 		if (pdpm->pdo[i].type == PD_SRC_PDO_TYPE_AUGMENTED
 			&& pdpm->pdo[i].pps && pdpm->pdo[i].pos) {
 			if (pdpm->pdo[i].max_volt_mv >= pdpm->apdo_max_volt
-					&& pdpm->pdo[i].curr_ma >= pdpm->apdo_max_curr) {
+					&& pdpm->pdo[i].curr_ma >= pdpm->apdo_max_curr
+					&& pdpm->pdo[i].max_volt_mv <= APDO_MAX_VOLT) {
 				pdpm->apdo_max_volt = pdpm->pdo[i].max_volt_mv;
 				pdpm->apdo_max_curr = pdpm->pdo[i].curr_ma;
 				pdpm->apdo_selected_pdo = pdpm->pdo[i].pos;
