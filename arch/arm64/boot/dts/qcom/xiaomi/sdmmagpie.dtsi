@@ -1,0 +1,35 @@
+/ {
+	aliases {
+		spi2 = &qupv3_se8_spi;
+	};
+};
+
+&firmware {
+	android {
+		vbmeta {
+			parts = "vbmeta,boot,system,vendor,dtbo,recovery";
+		};
+		fstab {
+			vendor {
+				fsmgr_flags = "wait,avb";
+			};
+		};
+	};
+};
+
+&wdog {
+	qcom,bark-time = <20000>;
+	qcom,pet-time = <15000>;
+};
+
+&ufshc_mem {
+	spm-level = <3>;
+};
+
+&qupv3_se9_i2c {
+	status = "disabled";
+};
+
+&fsa4480 {
+	status = "disabled";
+};

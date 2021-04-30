@@ -1,0 +1,3 @@
+&swr2 {
+	qcom,swr-mstr-tx-wakeup-capable;
+};
