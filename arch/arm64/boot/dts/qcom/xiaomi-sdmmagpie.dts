@@ -1,0 +1,44 @@
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/dts-v1/;
+
+#include "sdmmagpie.dtsi"
+
+// Include non-overlayed xiaomi changes
+#include "xiaomi/pm6150.dtsi"
+#include "xiaomi/pm6150l.dtsi"
+#include "xiaomi/sdmmagpie.dtsi"
+#include "xiaomi/sdmmagpie-camera.dtsi"
+#include "xiaomi/sdmmagpie-pinctrl.dtsi"
+#include "xiaomi/sdmmagpie-regulator.dtsi"
+#include "xiaomi/sdmmagpie-sde.dtsi"
+#include "xiaomi/sdmmagpie-thermal.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. SDMMAGPIE SoC";
+	compatible = "qcom,sdmmagpie";
+	qcom,pmic-name = "PM6150";
+	qcom,board-id = <0 0>;
+};
+
+&pm6150l_lcdb {
+	/delete-property/ qcom,voltage-step-ramp;
+};
+
+&sm6150_snd {
+	/delete-property/ fsa4480-i2c-handle;
+};
+
+&icnss {
+	/delete-property/ vdd-3.3-ch1-supply;
+};
