@@ -60,15 +60,6 @@ extern int32_t nvt_extra_proc_init(void);
 extern void nvt_extra_proc_deinit(void);
 #endif
 
-/*2019.12.06 longcheer taocheng add charger mode begin*/
-/*function description*/
-#if NVT_USB_PLUGIN
-static void nvt_ts_usb_plugin_work_func(struct work_struct *work);
-DECLARE_WORK(nvt_usb_plugin_work, nvt_ts_usb_plugin_work_func);
-extern touchscreen_usb_plugin_data_t g_touchscreen_usb_pulgin;
-#endif
-/*2019.12.06 longcheer taocheng add charger mode end*/
-
 struct nvt_ts_data *ts;
 //static struct device *spi_geni_master_dev;
 
@@ -126,8 +117,6 @@ const uint16_t gesture_key_array[] = {
 #endif
 
 static uint8_t bTouchIsAwake;
-static uint8_t open_pocket_fail;
-static uint8_t close_pocket_fail;
 
 #if WAKEUP_GESTURE
 #define WAKEUP_OFF 4
@@ -146,55 +135,6 @@ int nvt_gesture_switch(struct input_dev *dev, unsigned int type, unsigned int co
 }
 
 #endif
-/*2019.12.6 longcheer taocheng add charger mode begin*/
-/*function description*/
-#if NVT_USB_PLUGIN
-void nvt_ts_usb_event_callback(void)
-{
-	schedule_work(&nvt_usb_plugin_work);
-}
-
-static void nvt_ts_usb_plugin_work_func(struct work_struct *work)
-{
-	uint8_t buf[8] = {0};
-	int32_t ret = 0;
-
-	if (!bTouchIsAwake) {
-		NVT_ERR("tp is suspended, can not to set\n");
-		return;
-	}
-
-	NVT_LOG("++\n");
-	mutex_lock(&ts->lock);
-	NVT_LOG("usb_plugged_in = %d\n", g_touchscreen_usb_pulgin.usb_plugged_in);
-
-	msleep(35);
-
-	//---set xdata index to EVENT BUF ADDR---
-	ret = nvt_set_page(ts->mmap->EVENT_BUF_ADDR | EVENT_MAP_HOST_CMD);
-	if (ret < 0) {
-		NVT_ERR("Set event buffer index fail!\n");
-		goto exit;
-	}
-
-	buf[0] = EVENT_MAP_HOST_CMD;
-	if (g_touchscreen_usb_pulgin.usb_plugged_in)
-		buf[1] = 0x53;// power plug ac on
-	else
-		buf[1] = 0x51;// power plug off
-
-	ret = CTP_SPI_WRITE(ts->client, buf, 2);
-	if (ret < 0) {
-		NVT_ERR("Write pwr plug switch command fail!\n");
-		goto exit;
-	}
-
-exit:
-	mutex_unlock(&ts->lock);
-	NVT_LOG("--\n");
-}
-#endif
-/*2019.12.6 longcheer taocheng add charger mode end*/
 
 /*******************************************************
 Description:
@@ -1241,45 +1181,6 @@ static uint8_t nvt_wdt_fw_recovery(uint8_t *point_data)
 }
 #endif	/* #if NVT_TOUCH_WDT_RECOVERY */
 
-#if LCT_TP_PALM_EN
-/*2020.228 longcheer taocheng add for pocket mode start*/
-#define FUNCPAGE_PALM 4
-#define PACKET_PALM_ON 3
-#define PACKET_PALM_OFF 4
-int32_t nvt_check_palm(uint8_t input_id, uint8_t *data)
-{
-	int32_t ret = 0;
-	uint8_t func_type = data[2];
-	uint8_t palm_state = data[3];
-	uint8_t keycode = 0;
-
-		if ((input_id == DATA_PROTOCOL) && (func_type == FUNCPAGE_PALM)) {
-			ret = palm_state;
-			if (palm_state == PACKET_PALM_ON) {
-				NVT_LOG("get packet palm on event.\n");
-				keycode = gesture_key_array[13];
-			} else if (palm_state == PACKET_PALM_OFF) {
-				NVT_LOG("get packet palm off event.\n");
-			} else {
-				NVT_ERR("invalid palm state %d!\n", palm_state);
-				ret = -1;
-			}
-		} else {
-			ret = 0;
-		}
-		if (keycode > 0) {
-			NVT_LOG("powerkey.\n");
-			input_report_key(ts->input_dev, keycode, 1);
-			input_sync(ts->input_dev);
-			input_report_key(ts->input_dev, keycode, 0);
-			input_sync(ts->input_dev);
-			set_lct_tp_palm_status(false);
-		}
-	return ret;
-}
-/*2020.2.28 longcheer taocheng add for pocket mode end*/
-#endif
-
 #define POINT_DATA_LEN 65
 /*******************************************************
 Description:
@@ -1352,11 +1253,6 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	input_id = (uint8_t)(point_data[1] >> 3);
-#if LCT_TP_PALM_EN
-	if (nvt_check_palm(input_id, point_data)) {
-		goto XFER_ERROR;
-	}
-#endif
 #if WAKEUP_GESTURE
 	if (bTouchIsAwake == 0) {
 		//input_id = (uint8_t)(point_data[1] >> 3);
@@ -2284,11 +2180,6 @@ static int32_t nvt_ts_probe(struct spi_device *client)
 
 	pm_runtime_enable(&ts->client->dev);
 
-//2019.12.06 longcheer taocheng add for charger mode
-#if NVT_USB_PLUGIN
-	g_touchscreen_usb_pulgin.event_callback = nvt_ts_usb_event_callback;
-#endif
-
 #if 0
 	//spi bus pm_runtime_get
 	spi_geni_master_dev = lct_get_spi_geni_master_dev(ts->client->master);
@@ -2678,13 +2569,6 @@ static int32_t nvt_ts_resume(struct device *dev)
 	NVT_LOG("bTouchIsAwake = 1\n");
 	mutex_unlock(&ts->lock);
 
-#if LCT_TP_PALM_EN
-	if (open_pocket_fail) {
-		NVT_LOG("re-open pocket mode\n");
-		lct_nvt_tp_palm_callback(false);
-	}
-#endif
-
 #if WAKEUP_GESTURE
 	if (ts->delay_gesture) {
 		lct_nvt_tp_gesture_callback(!ts->is_gesture_mode);
@@ -2692,21 +2576,7 @@ static int32_t nvt_ts_resume(struct device *dev)
 	}
 #endif
 
-//2019.12.06 longcheer taocheng add for charger mode
-#if NVT_USB_PLUGIN
-	if (g_touchscreen_usb_pulgin.valid && g_touchscreen_usb_pulgin.usb_plugged_in)
-		g_touchscreen_usb_pulgin.event_callback();
-#endif
-
 	NVT_LOG("end\n");
-
-#if LCT_TP_PALM_EN
-	msleep(100);
-	if (close_pocket_fail) {
-		NVT_LOG("re-close pocket mode\n");
-		lct_nvt_tp_palm_callback(true);
-	}
-#endif
 
 	return 0;
 }

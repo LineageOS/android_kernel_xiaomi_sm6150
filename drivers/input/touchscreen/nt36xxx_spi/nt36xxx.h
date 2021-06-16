@@ -101,20 +101,6 @@ extern const uint16_t gesture_key_array[];
 //enable 'check touch vendor' feature
 #define CHECK_TOUCH_VENDOR
 
-/*2019.12.06 longcheer taocheng add for charger mode begin*/
-/*functions description*/
-//enable tp usb plugin feature
-#define NVT_USB_PLUGIN		1
-
-#if NVT_USB_PLUGIN
-typedef struct touchscreen_usb_plugin_data {
-	bool valid;
-	bool usb_plugged_in;
-	void (*event_callback)(void);
-} touchscreen_usb_plugin_data_t;
-#endif
-/*2019.12.06 longcheer taocheng add charger mode end*/
-
 //---Touch Vendor ID---
 #define TP_VENDOR_UNKNOWN   0x00
 #define TP_VENDOR_HUAXING   0x01
