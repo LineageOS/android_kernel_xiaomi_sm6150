@@ -1365,8 +1365,12 @@ static int nvt_set_cur_value(int nvt_mode, int nvt_value)
 	uint8_t reg_value = 0;
 	uint8_t ret = 0;
 
-	if (bTouchIsAwake) {
+	if (nvt_mode == Touch_Doubletap_Mode && nvt_value >= 0) {
+		enable_gesture_mode = nvt_value;
+		return 0;
+	}
 
+	if (bTouchIsAwake) {
 
 		if (nvt_mode >= Touch_Mode_NUM && nvt_mode < 0) {
 			NVT_ERR("%s, nvt mode is error:%d", __func__, nvt_mode);
