@@ -1283,6 +1283,12 @@ static void fts_update_touchmode_data(int mode)
 
 static int fts_set_cur_value(int mode, int value)
 {
+
+	if (mode == Touch_Doubletap_Mode && value >= 0) {
+		enable_gesture_mode = value;
+		return 0;
+	}
+
 	if (fts_data->suspended) {
 		FTS_INFO("%s, set mode:%d, value:%d failed while touch suspend!", __func__, mode, value);
 		return 0;
