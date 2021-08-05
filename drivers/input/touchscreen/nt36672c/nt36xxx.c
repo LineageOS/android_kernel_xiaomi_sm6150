@@ -1872,6 +1872,12 @@ static int nvt_set_cur_value(int nvt_mode, int nvt_value)
 		return -EINVAL;
 	}
 
+	if (nvt_mode == Touch_Doubletap_Mode && nvt_value >= 0) {
+		ts->gesture_command_delayed = nvt_value;
+		ts->db_wakeup = 0;
+		return 0;
+    	}
+
 	xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] = nvt_value;
 
 	if (xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] >
