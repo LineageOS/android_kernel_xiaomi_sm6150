@@ -222,6 +222,10 @@ struct dsi_panel {
 
 	struct dsi_parser_utils utils;
 
+#ifdef CONFIG_TOUCHSCREEN_TDDI_DBCLK
+	bool is_tddi_flag;
+#endif
+
 	bool lp11_init;
 	bool ulps_feature_enabled;
 	bool ulps_suspend_enabled;
