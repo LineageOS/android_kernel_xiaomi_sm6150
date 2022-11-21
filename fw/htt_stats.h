@@ -6375,6 +6375,14 @@ typedef struct {
     A_UINT32 cv_buf_received;
     /** total times CV bufs fed back to the IPC ring */
     A_UINT32 cv_buf_fed_back;
+    /* Total times CV query happened for IBF case */
+    A_UINT32 cv_total_query_ibf;
+    /* A valid CV has been found for IBF case */
+    A_UINT32 cv_found_ibf;
+    /* A valid CV has not been found for IBF case */
+    A_UINT32 cv_not_found_ibf;
+    /* Expired CV found during query for IBF case */
+    A_UINT32 cv_expired_during_query_ibf;
 } htt_tx_sounding_stats_tlv;
 
 /* STATS_TYPE : HTT_DBG_EXT_STATS_TX_SOUNDING_INFO
@@ -8456,6 +8464,20 @@ typedef struct {
     A_UINT32 chan_acc_lat_based_dlofdma_disabled_count[HTT_NUM_AC_WMM];
     /** Num of instances where avg. channel access latency based DL OFDMA status = MONITORING */
     A_UINT32 chan_acc_lat_based_dlofdma_monitoring_count[HTT_NUM_AC_WMM];
+    /** Num of instances where dl ofdma is disabled due to ru allocation failure */
+    A_UINT32 downgrade_to_dl_su_ru_alloc_fail[HTT_NUM_AC_WMM];
+    /** Num of instances where dl ofdma is disabled because we have only one user in candidate list */
+    A_UINT32 candidate_list_single_user_disable_ofdma[HTT_NUM_AC_WMM];
+    /** Num of instances where ul is chosen over dl based on qos weight not specific to OFDMA */
+    A_UINT32 dl_cand_list_dropped_high_ul_qos_weight[HTT_NUM_AC_WMM];
+    /** Num of instances where dl ofdma is disabled due to pipelining */
+    A_UINT32 ax_dlofdma_disabled_due_to_pipelining[HTT_NUM_AC_WMM];
+    /** Num of instances where dl ofdma is disabled as the tid is su only eligible */
+    A_UINT32 dlofdma_disabled_su_only_eligible[HTT_NUM_AC_WMM];
+    /** Num of instances where dl ofdma is disabled because there are no mpdus tried consecutively */
+    A_UINT32 dlofdma_disabled_consec_no_mpdus_tried[HTT_NUM_AC_WMM];
+    /** Num of instances where dl ofdma is disabled because there are consecutive mpdu failure */
+    A_UINT32 dlofdma_disabled_consec_no_mpdus_success[HTT_NUM_AC_WMM];
 } htt_pdev_sched_algo_ofdma_stats_tlv;
 
 /*======= Bandwidth Manager stats ====================*/
