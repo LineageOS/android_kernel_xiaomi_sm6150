@@ -24,6 +24,7 @@
 #include "msm_kms.h"
 #include "sde_connector.h"
 #include "dsi_drm.h"
+#include "dsi_panel.h"
 #include "sde_trace.h"
 #include "sde_encoder.h"
 
@@ -1121,6 +1122,10 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 				return -EINVAL;
 			}
 		}
+#ifdef CONFIG_MACH_XIAOMI_SWEET
+		if (adj_mode.timing.refresh_rate == 120)
+			dsi_panel_gamma_mode_change(display->panel, &adj_mode);
+#endif
 
 		c_bridge->dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_VRR;
 	}
