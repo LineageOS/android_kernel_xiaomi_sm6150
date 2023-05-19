@@ -4051,6 +4051,9 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 				info->fod_overlap = fod_overlap;
 				if ((info->sensor_sleep && !info->sleep_finger) || !info->sensor_sleep) {
 					info->fod_pressed = true;
+					info->fod_pressed_x = x;
+					info->fod_pressed_y = y;
+					sysfs_notify(&fts_info->fts_touch_dev->kobj, NULL, "fp_state");
 					input_report_key(info->input_dev, BTN_INFO, 1);
 					input_sync(info->input_dev);
 					if (info->fod_id) {
@@ -4093,6 +4096,9 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 			info->sleep_finger = 0;
 			info->fod_overlap = 0;
 			info->fod_pressed = false;
+			info->fod_pressed_x = 0;
+			info->fod_pressed_y = 0;
+			sysfs_notify(&fts_info->fts_touch_dev->kobj, NULL, "fp_state");
 			goto gesture_done;
 		}
 #endif
@@ -7213,6 +7219,16 @@ void fts_secure_remove(struct fts_ts_info *info)
 
 #endif
 
+static ssize_t fp_state_show(struct device *dev,
+						struct device_attribute *attr, char *buf)
+{
+	struct fts_ts_info *info = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d,%d,%d\n",
+			info->fod_pressed_x, info->fod_pressed_y,
+			info->fod_pressed);
+}
+static DEVICE_ATTR_RO(fp_state);
 
 /**
  * Probe function, called when the driver it is matched with a device with the same name compatible name
@@ -7600,6 +7616,14 @@ static int fts_probe(struct spi_device *client)
 			 "%s ERROR: Failed to create device for the sysfs!\n",
 			 tag);
 		goto ProbeErrorExit_8;
+	}
+
+	error =
+	    sysfs_create_file(&info->fts_touch_dev->kobj,
+				  &dev_attr_fp_state.attr);
+
+	if (error) {
+		MI_TOUCH_LOGE(1, "%s %s: Failed to create fp_state sysfs file!\n", tag, __func__)
 	}
 
 	dev_set_drvdata(info->fts_touch_dev, info);
