@@ -795,9 +795,6 @@ int dsi_panel_update_doze(struct dsi_panel *panel) {
 }
 
 int dsi_panel_set_doze_status(struct dsi_panel *panel, bool status) {
-	if (panel->doze_enabled == status)
-		return 0;
-
 	panel->doze_enabled = status;
 
 	return dsi_panel_update_doze(panel);
