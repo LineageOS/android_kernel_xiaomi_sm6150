@@ -1097,6 +1097,8 @@ int dsi_display_set_power(struct drm_connector *connector,
 		return rc;
 	}
 
+	dsi_panel_update_doze(display->panel);
+
 	pr_debug("Power mode transition from %d to %d %s",
 		 display->panel->power_mode, power_mode,
 		 rc ? "failed" : "successful");

@@ -387,6 +387,8 @@ int dsi_panel_set_doze_status(struct dsi_panel *panel, bool status);
 
 int dsi_panel_set_doze_mode(struct dsi_panel *panel, enum dsi_doze_mode_type mode);
 
+int dsi_panel_update_doze(struct dsi_panel *panel);
+
 int dsi_panel_set_fod_hbm(struct dsi_panel *panel, bool status);
 
 u32 dsi_panel_get_fod_dim_alpha(struct dsi_panel *panel);
