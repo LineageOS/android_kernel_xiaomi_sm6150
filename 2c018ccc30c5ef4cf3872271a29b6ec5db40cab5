@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "0d5b48b7_9a5265e4",
+        "filename": "arch/arm64/boot/dts/qcom/xiaomi/sweet/dsi-panel-k6-38-0c-0a-fhd-dsc-video.dtsi",
+        "patchSetId": 1
+      },
+      "lineNbr": 147,
+      "author": {
+        "id": 21290
+      },
+      "writtenOn": "2023-06-03T21:08:56Z",
+      "side": 1,
+      "message": "use capital letters to match the other commands please",
+      "range": {
+        "startLine": 147,
+        "startChar": 26,
+        "endLine": 147,
+        "endChar": 28
+      },
+      "revId": "2c018ccc30c5ef4cf3872271a29b6ec5db40cab5",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
