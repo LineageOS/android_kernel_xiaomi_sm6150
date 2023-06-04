@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "f1986398_c72ef6dc",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 4
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 21290
+      },
+      "writtenOn": "2023-06-04T08:22:40Z",
+      "side": 1,
+      "message": "PS 3 -\u003e 4 reverted the captial letters",
+      "revId": "8f0e69c755ed86e3cdf3286c18fa03dce097b4b1",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
