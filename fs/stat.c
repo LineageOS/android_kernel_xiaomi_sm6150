@@ -148,7 +148,7 @@ int vfs_statx_fd(unsigned int fd, struct kstat *stat,
 }
 EXPORT_SYMBOL(vfs_statx_fd);
 
-#ifdef CONFIG_KSU
+#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
 #endif
 
@@ -174,7 +174,7 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 	int error = -EINVAL;
 	unsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;
 
-#ifdef CONFIG_KSU
+#if defined(CONFIG_KSU) && !defined(CONFIG_KPROBES)
 	ksu_handle_stat(&dfd, &filename, &flags);
 #endif
 
