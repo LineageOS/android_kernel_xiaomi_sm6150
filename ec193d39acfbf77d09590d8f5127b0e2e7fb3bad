@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "df4a4605_300c898b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 6360
+      },
+      "writtenOn": "2023-06-19T15:12:20Z",
+      "side": 1,
+      "message": "#ifdef CONFIG_MACH_XIAOMI_SWEET\n#define FPC_DRM_INTERFACE_WA\n#endif",
+      "revId": "ec193d39acfbf77d09590d8f5127b0e2e7fb3bad",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
