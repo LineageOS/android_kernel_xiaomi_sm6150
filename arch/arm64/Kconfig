@@ -1309,6 +1309,18 @@ config CMDLINE_FORCE
 	  command-line options your boot loader passes to the kernel.
 endchoice
 
+config CMDLINE_HWC_IS_SKU
+	bool "Use HWC version as SKU version"
+	help
+	  Set androidboot.hardware.sku based on the HWC version reported
+	  by the bootloader.
+
+config CMDLINE_HWC_IS_PRODUCT_SKU
+	bool "Use HWC version as SKU version"
+	help
+	  Set androidboot.product.hardware.sku based on the HWC version
+	  reported by the bootloader.
+
 config EFI_STUB
 	bool
 
