@@ -12,9 +12,11 @@ obj-y += embed_ksud.o
 obj-y += kernel_compat.o
 
 obj-y += selinux/
-
-KSU_GIT_VERSION := 841
-ccflags-y += -DKSU_GIT_VERSION=$(KSU_GIT_VERSION)
+KSU_GIT_VERSION := 887
+# ksu_version: major * 10000 + git version + 200 for historical reasons
+$(eval KSU_VERSION=$(shell expr 10000 + $(KSU_GIT_VERSION) + 200))
+$(info -- KernelSU version: $(KSU_VERSION))
+ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
 
 ifndef EXPECTED_SIZE
 EXPECTED_SIZE := 0x033b
