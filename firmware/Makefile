@@ -32,6 +32,7 @@ fw-shipped-$(CONFIG_TOUCHSCREEN_NT36xxx_HOSTDL_SPI) += novatek_nt36672c_g7b_fw02
 fw-shipped-$(CONFIG_TOUCHSCREEN_NT36xxx_HOSTDL_SPI) += novatek_ts_fw.bin
 
 fw-shipped-$(CONFIG_TOUCHSCREEN_GOODIX_GTX9896_I2C) += goodix_gt9896_cfg.bin goodix_gt9896_fw.bin
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS_K6) += focaltech_ts_fw_k6.bin
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 quiet_cmd_ihex  = IHEX    $@
