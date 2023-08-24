@@ -45,6 +45,7 @@
 /*****************************************************************************
 * Global variable or extern global variabls/functions
 *****************************************************************************/
+#if FTS_AUTO_UPGRADE_EN
 u8 fw_file[] = {
 #include FTS_UPGRADE_FW_FILE
 };
@@ -61,6 +62,9 @@ struct upgrade_module module_list[] = {
         {FTS_MODULE2_ID, FTS_MODULE2_NAME, fw_file2, sizeof(fw_file2)},
         {FTS_MODULE3_ID, FTS_MODULE3_NAME, fw_file3, sizeof(fw_file3)},
 };
+#else
+struct upgrade_module module_list[] = {};
+#endif
 
 struct upgrade_func *upgrade_func_list[] = {
         &upgrade_func_ft5652,
