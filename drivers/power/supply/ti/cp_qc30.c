@@ -185,6 +185,12 @@ static struct power_supply *cp_get_fc_psy(void)
 			pm_state.fc_psy = power_supply_get_by_name("bq2597x-master");
 		else
 			pm_state.fc_psy = power_supply_get_by_name("bq2597x-standalone");
+		if (!pm_state.fc_psy)
+		{
+			pm_state.fc_psy = power_supply_get_by_name("ln8000");
+			if (!pm_state.fc_psy)
+				pr_err("cp_psy not found\n");
+		}
 	}
 
 	return pm_state.fc_psy;
