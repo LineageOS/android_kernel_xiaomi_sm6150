@@ -1398,6 +1398,8 @@ typedef enum {
     WMITLV_TAG_STRUC_wmi_pdev_wsi_stats_info_cmd_fixed_param,
     WMITLV_TAG_STRUC_wmi_enhanced_aoa_caps_param,
     WMITLV_TAG_STRUC_wmi_enhanced_aoa_per_band_caps_param,
+    WMITLV_TAG_STRUC_WMI_RADAR_FLAGS,
+    WMITLV_TAG_STRUC_wmi_dma_buf_release_cqi_upload_meta_data,
 } WMITLV_TAG_ID;
 /*
  * IMPORTANT: Please add _ALL_ WMI Commands Here.
@@ -6255,7 +6257,8 @@ WMITLV_CREATE_PARAM_STRUC(WMI_PEER_OPER_MODE_CHANGE_EVENTID);
 WMITLV_CREATE_PARAM_STRUC(WMI_DFS_RADAR_EVENTID);
 
 #define WMITLV_TABLE_WMI_PDEV_DFS_RADAR_DETECTION_EVENTID(id,op,buf,len) \
-    WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_STRUC_wmi_pdev_dfs_radar_detection_event_fixed_param, wmi_pdev_dfs_radar_detection_event_fixed_param, fixed_param, WMITLV_SIZE_FIX)
+    WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_STRUC_wmi_pdev_dfs_radar_detection_event_fixed_param, wmi_pdev_dfs_radar_detection_event_fixed_param, fixed_param, WMITLV_SIZE_FIX) \
+    WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_ARRAY_STRUC, WMI_RADAR_FLAGS, radar_flags, WMITLV_SIZE_VAR)
 WMITLV_CREATE_PARAM_STRUC(WMI_PDEV_DFS_RADAR_DETECTION_EVENTID);
 
 #define WMITLV_TABLE_WMI_VDEV_ADFS_OCAC_COMPLETE_EVENTID(id,op,buf,len) \
@@ -7009,7 +7012,8 @@ WMITLV_CREATE_PARAM_STRUC(WMI_PDEV_DMA_RING_CFG_RSP_EVENTID);
     WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_STRUC_wmi_dma_buf_release_fixed_param, wmi_dma_buf_release_fixed_param, fixed_param, WMITLV_SIZE_FIX) \
     WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_ARRAY_STRUC, wmi_dma_buf_release_entry, entries, WMITLV_SIZE_VAR) \
     WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_ARRAY_STRUC, wmi_dma_buf_release_spectral_meta_data, meta_data, WMITLV_SIZE_VAR) \
-    WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_ARRAY_STRUC, wmi_dma_buf_release_cv_upload_meta_data, cv_meta_data, WMITLV_SIZE_VAR)
+    WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_ARRAY_STRUC, wmi_dma_buf_release_cv_upload_meta_data, cv_meta_data, WMITLV_SIZE_VAR) \
+    WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_ARRAY_STRUC, wmi_dma_buf_release_cqi_upload_meta_data, cqi_meta_data, WMITLV_SIZE_VAR)
 WMITLV_CREATE_PARAM_STRUC(WMI_PDEV_DMA_RING_BUF_RELEASE_EVENTID);
 
 /* ctl failsafe check event */
