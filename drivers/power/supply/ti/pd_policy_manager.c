@@ -143,6 +143,30 @@ static int pd_get_batt_current_thermal_level(struct usbpd_pm *pdpm, int *level)
 	return rc;
 }
 
+/* get capacity from battery power supply property */
+static int pd_get_batt_capacity(struct usbpd_pm *pdpm, int *capacity)
+{
+	union power_supply_propval pval = {0,};
+	int rc = 0;
+
+	usbpd_check_batt_psy(pdpm);
+
+	if (!pdpm->sw_psy)
+		return -ENODEV;
+
+	rc = power_supply_get_property(pdpm->sw_psy,
+				POWER_SUPPLY_PROP_CAPACITY, &pval);
+	if (rc < 0) {
+		pr_info("Couldn't get battery capacity:%d\n", rc);
+		return rc;
+	}
+
+	pr_err("battery capacity is : %d\n", pval.intval);
+
+	*capacity = pval.intval;
+	return rc;
+}
+
 /* determine whether to disable cp according to jeita status */
 static bool pd_disable_cp_by_jeita_status(struct usbpd_pm *pdpm)
 {
@@ -1140,6 +1164,7 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 	int thermal_level = 0;
 	static int curr_fcc_lmt, curr_ibus_lmt, retry_count;
 	static int request_fail_count = 0;
+	int capacity = 0;
 
 	switch (pdpm->state) {
 	case PD_PM_STATE_ENTRY:
@@ -1152,6 +1177,7 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 		pdpm->is_temp_out_fc2_range = pd_disable_cp_by_jeita_status(pdpm);
 		pr_info("is_temp_out_fc2_range:%d\n", pdpm->is_temp_out_fc2_range);
 
+		pd_get_batt_capacity(pdpm, &capacity);
 		effective_fcc_val = usbpd_get_effective_fcc_val(pdpm);
 
 		if (effective_fcc_val > 0) {
