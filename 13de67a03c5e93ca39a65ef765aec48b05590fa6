@@ -16,6 +16,24 @@
       "message": "Is this used somewhere? I only see that pd_get_batt_capacity writes to it but nothing reads it.",
       "revId": "13de67a03c5e93ca39a65ef765aec48b05590fa6",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c790851c_811a7085",
+        "filename": "drivers/power/supply/ti/pd_policy_manager.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 1167,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2023-10-04T13:44:32Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "d349f335_8674d29f",
+      "revId": "13de67a03c5e93ca39a65ef765aec48b05590fa6",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
