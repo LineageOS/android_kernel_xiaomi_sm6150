@@ -994,22 +994,24 @@ And public attribution of xiaomi platforms(like F3 and so and)
 	};
 };
 
-&msm_cam_smmu {
-	msm_cam_smmu_icp {
-		icp_iova_mem_map: iova-mem-map {
-			iova-mem-region-shared {
-				/* Shared region is 268MB long */
-				iova-region-len = <0x10000000>;
-			};
-			iova-mem-region-secondary-heap {
-				iova-region-start = <0x17400000>;
-			};
-			iova-mem-region-io {
-				iova-region-start = <0x17600000>;
-				iova-region-len = <0xCF300000>;
-			};
-			iova-mem-qdss-region {
-				iova-region-start = <0x17500000>;
+&soc {
+	qcom,cam_smmu {
+		msm_cam_smmu_icp {
+			icp_iova_mem_map: iova-mem-map {
+				iova-mem-region-shared {
+					/* Shared region is 268MB long */
+					iova-region-len = <0x10000000>;
+				};
+				iova-mem-region-secondary-heap {
+					iova-region-start = <0x17400000>;
+				};
+				iova-mem-region-io {
+					iova-region-start = <0x17600000>;
+					iova-region-len = <0xCF300000>;
+				};
+				iova-mem-qdss-region {
+					iova-region-start = <0x17500000>;
+				};
 			};
 		};
 	};
