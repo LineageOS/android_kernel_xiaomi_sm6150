@@ -6,6 +6,7 @@
 #include "phoenix/dsi-panel-g7b-37-02-0b-dsc-video.dtsi"
 #include "phoenix/dsi-panel-g7b-42-02-0b-dsc-video.dtsi"
 #include "sweet/dsi-panel-k6-38-0c-0a-fhd-dsc-video.dtsi"
+#include "sweet/dsi-panel-k6-38-0e-0b-fhd-dsc-video.dtsi"
 #include "tucana/dsi-panel-xiaomi-f4-41-06-0a-fhd-cmd.dtsi"
 #include "tucana/dsi-panel-xiaomi-f4-36-02-0b-fhd-cmd.dtsi"
 #include "tucana/dsi-panel-xiaomi-f4-42-06-0c-fhd-cmd.dtsi"
@@ -70,7 +71,18 @@
 		 qcom,dsi-panel = <&dsi_k6_38_0c_0a_fhd_dsc_video>;
 	};
 
-	dsi_k9a_36_02_0a_mp_dsc_cmd_display: qcom,dsi-display@26 {
+	dsi_k6_38_0e_0b_fhd_dsc_video_display: qcom,dsi-display@26 {
+		label = "dsi_k6_38_0e_0b_fhd_dsc_video_display";
+		qcom,display-type = "primary";
+
+		qcom,dsi-ctrl-num = <0>;
+		qcom,dsi-phy-num = <0>;
+		qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+
+		qcom,dsi-panel = <&dsi_k6_38_0e_0b_fhd_dsc_video>;
+	};
+
+	dsi_k9a_36_02_0a_mp_dsc_cmd_display: qcom,dsi-display@27 {
 		 label = "mdss_dsi_k9a_36_02_0a_mp_dsc_cmd";
 		 qcom,display-type = "primary";
 
@@ -81,7 +93,7 @@
 		 qcom,dsi-panel = <&dsi_k9a_36_02_0a_mp_dsc_cmd>;
 	};
 
-	dsi_k9a_42_02_0b_mp_dsc_cmd_display: qcom,dsi-display@27 {
+	dsi_k9a_42_02_0b_mp_dsc_cmd_display: qcom,dsi-display@28 {
 		 label = "mdss_dsi_k9a_42_02_0b_mp_dsc_cmd";
 		 qcom,display-type = "primary";
 
@@ -92,7 +104,7 @@
 		 qcom,dsi-panel = <&dsi_k9a_42_02_0b_mp_dsc_cmd>;
 	};
 
-	dsi_ss_fhd_ea_f10_cmd_display: qcom,dsi-display@28 {
+	dsi_ss_fhd_ea_f10_cmd_display: qcom,dsi-display@29 {
 		label = "dsi_ss_fhd_ea_f10_cmd_display";
 		qcom,display-type = "primary";
 
@@ -103,7 +115,7 @@
 		qcom,dsi-panel = <&dsi_ss_fhd_ea_f10_cmd>;
 	};
 
-	dsi_ss_fhd_eb_f10_cmd_display: qcom,dsi-display@29 {
+	dsi_ss_fhd_eb_f10_cmd_display: qcom,dsi-display@30 {
 		label = "dsi_ss_fhd_eb_f10_cmd_display";
 		qcom,display-type = "primary";
 
@@ -114,7 +126,7 @@
 		qcom,dsi-panel = <&dsi_ss_fhd_eb_f10_cmd>;
 	};
 
-	dsi_xiaomi_f4_36_02_0b_fhd_cmd_display: qcom,dsi-display@30 {
+	dsi_xiaomi_f4_36_02_0b_fhd_cmd_display: qcom,dsi-display@31 {
 		label = "dsi_xiaomi_f4_36_02_0b_fhd_cmd_display";
 		qcom,display-type = "primary";
 
@@ -125,7 +137,7 @@
 		qcom,dsi-panel = <&dsi_xiaomi_f4_36_02_0b_fhd_cmd>;
 	};
 
-	dsi_xiaomi_f4_41_06_0a_fhd_cmd_display: qcom,dsi-display@31 {
+	dsi_xiaomi_f4_41_06_0a_fhd_cmd_display: qcom,dsi-display@32 {
 		 label = "dsi_xiaomi_f4_41_06_0a_fhd_cmd_display";
 		 qcom,display-type = "primary";
 
@@ -136,7 +148,7 @@
 		 qcom,dsi-panel = <&dsi_xiaomi_f4_41_06_0a_fhd_cmd>;
 	 };
 
-	dsi_xiaomi_f4_42_06_0c_fhd_cmd_display: qcom,dsi-display@32 {
+	dsi_xiaomi_f4_42_06_0c_fhd_cmd_display: qcom,dsi-display@33 {
 		label = "dsi_xiaomi_f4_42_06_0c_fhd_cmd_display";
 		qcom,display-type = "primary";
 
@@ -154,6 +166,7 @@
 		&dsi_g7b_37_02_0b_video_display
 		&dsi_g7b_42_02_0b_video_display
 		&dsi_k6_38_0c_0a_fhd_dsc_video_display
+		&dsi_k6_38_0e_0b_fhd_dsc_video_display
 		&dsi_k9a_36_02_0a_mp_dsc_cmd_display
 		&dsi_k9a_42_02_0b_mp_dsc_cmd_display
 		&dsi_ss_fhd_ea_f10_cmd_display
@@ -205,6 +218,19 @@
 };
 
 &dsi_k6_38_0c_0a_fhd_dsc_video {
+	qcom,mdss-dsi-t-clk-post = <0x0F>;
+	qcom,mdss-dsi-t-clk-pre = <0x37>;
+	qcom,mdss-dsi-display-timings {
+		timing@0{
+			qcom,mdss-dsi-panel-phy-timings = [00 24 0a 0a 26 25 09
+					0a 06 02 04 00];
+			qcom,display-topology = <1 1 1>;
+			qcom,default-topology-index = <0>;
+		};
+	};
+};
+
+&dsi_k6_38_0e_0b_fhd_dsc_video {
 	qcom,mdss-dsi-t-clk-post = <0x0F>;
 	qcom,mdss-dsi-t-clk-pre = <0x37>;
 	qcom,mdss-dsi-display-timings {
