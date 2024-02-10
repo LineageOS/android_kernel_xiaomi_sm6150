@@ -1510,38 +1510,37 @@ source "techpack/Kconfig"
 menu "Xiaomi configuration options"
 
 config MACH_XIAOMI
-        bool "Xiaomi board"
+        bool
         depends on ARCH_QCOM
-        help
-          Support for Xiaomi boards.
 
 config MACH_XIAOMI_SDMMAGPIE
-        bool "Xiaomi SDMMAGPIE boards"
+        bool
         depends on ARCH_SDMMAGPIE
         select MACH_XIAOMI
-        help
-          Support for Sdmmagpie-based Xiaomi variants
 
 config MACH_XIAOMI_SM6150
-        bool "Xiaomi SM6150"
+        bool
         depends on ARCH_SM6150
         select MACH_XIAOMI
-        help
-          Support for Sm6150-based Xiaomi variants
 
-menu "Xiaomi board selection"
+choice
+	prompt "Xiaomi board selection"
+	default MACH_XIAOMI_NONE
+
+config MACH_XIAOMI_NONE
+        bool "none"
 
 config MACH_XIAOMI_COURBET
         bool "courbet board"
         select MACH_XIAOMI_SDMMAGPIE
         help
-          Support for Mi 11 Lite, condenamed courbet.
+          Support for Mi 11 Lite, codenamed courbet.
 
 config MACH_XIAOMI_DAVINCI
         bool "davinci board"
         select MACH_XIAOMI_SDMMAGPIE
         help
-          Support for Redmi K20, condenamed davinci.
+          Support for Redmi K20, codenamed davinci.
 
 config MACH_XIAOMI_PHOENIX
         bool "phoenix board"
@@ -1572,6 +1571,6 @@ config MACH_XIAOMI_VIOLET
         select MACH_XIAOMI_SM6150
         help
           Support for Redmi Note 7 Pro
-endmenu
+endchoice
 
 endmenu
