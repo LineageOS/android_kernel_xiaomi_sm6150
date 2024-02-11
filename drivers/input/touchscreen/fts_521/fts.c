@@ -4969,6 +4969,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 	u8 gesture_cmd[6] = {0xA2, 0x03, 0x20, 0x00, 0x00, 0x01};
 	u8 single_only_cmd[4] = {0xC0, 0x02, 0x00, 0x00};
 	u8 single_double_cmd[4] = {0xC0, 0x02, 0x01, 0x1E};
+	u8 doubletap_cmd[6] = { 0xA2, 0x03, 0x20, 0x00, 0x00, 0x00 };
 #endif
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
 	mutex_lock(&info->fod_mutex);
@@ -5003,6 +5004,17 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 			res |= ret;
 
 			if (info->gesture_enabled == 1) {
+#ifdef CONFIG_FTS_FOD_AREA_REPORT
+				MI_TOUCH_LOGN(1, "%s %s: enter in doubletap mode ! \n", tag,
+					 __func__);
+				res = fts_write_dma_safe(doubletap_cmd, ARRAY_SIZE(doubletap_cmd));
+				if (res < OK)
+					MI_TOUCH_LOGE(1,
+						 "%s %s: enter in doubletap mode failed! ERROR %08X recovery in senseOff...\n",
+						 tag, __func__, res);
+				ret = setScanMode(SCAN_MODE_LOW_POWER, 0);
+				res |= ret;
+#else
 				MI_TOUCH_LOGN(1, "%s %s: enter in gesture mode ! \n", tag,
 					 __func__);
 				res = enterGestureMode(isSystemResettedDown());
@@ -5016,6 +5028,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 						 "%s %s: enterGestureMode failed! ERROR %08X recovery in senseOff...\n",
 						 tag, __func__, res);
 				}
+#endif
 			}
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
 		}
