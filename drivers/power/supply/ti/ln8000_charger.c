@@ -2,6 +2,7 @@
  * ln8000-charger.c - Charger driver for LIONSEMI LN8000
  *
  * Copyright (C) 2021 Lion Semiconductor Inc.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -35,7 +36,6 @@
 #include <linux/sysfs.h>
 #include <linux/debugfs.h>
 #include <linux/types.h>
-#include <linux/hardware_info.h>
 //#include <linux/power/ln8000_charger.h>
 #include "ln8000_charger.h"
 #include "cp_qc30.h"
@@ -801,26 +801,17 @@ static int psy_chg_get_ti_alarm_status(struct ln8000_info *info)
              (info->tbus_tbat_alarm << BUS_THERM_ALARM_SHIFT) |
              (info->tdie_alarm << DIE_THERM_ALARM_SHIFT));
 
-    if (info->vbus_uV < (info->vbat_uV * 2)) {
-        v_offset = 0;
-    } else {
-        v_offset = info->vbus_uV - (info->vbat_uV * 2);
-    }
-
+    v_offset = info->vbus_uV - (info->vbat_uV * 2);
     /* after charging-enabled, When the input current rises above rcp_th(over 200mA), it activates rcp. */
     if (info->chg_en && !(info->rcp_en)) {
-        /* v_offset > 300mV will be impossible sometimes */
-        /* Considering the accuracy of ADC, iin > 400mA better than before */
-        if (info->iin_uA > 400000) {
+        if (info->iin_uA > 200000 && v_offset > 300000) {
             ln8000_enable_rcp(info, 1);
             ln_info("enabled rcp\n");
         }
     }
     /* If an unplug event occurs when vbus voltage lower then vin_start_up_th, switch to standby mode. */
     if (info->chg_en && !(info->rcp_en)) {
-        /* v_offset can be lower then 100mV, because VBAT and VBUS will be closed proceed charging */
-        /* Therefore we need to check ibus current. confirm to charging status */
-        if (info->iin_uA < 70000 && v_offset < 100000) {
+        if (v_offset < 100000) {
             ln8000_change_opmode(info, LN8000_OPMODE_STANDBY);
             ln_info("forced change standby_mode for prevent reverse current\n");
             info->chg_en = 0;
@@ -953,7 +944,7 @@ static int ln8000_charger_get_property(struct power_supply *psy,
         }
         break;
     case POWER_SUPPLY_PROP_MODEL_NAME:
-        val->strval = "bq2597x-master";
+        val->strval = "ln8000";
         break;
     default:
         return -EINVAL;
@@ -1536,7 +1527,7 @@ static int ln8000_psy_register(struct ln8000_info *info)
 {
     info->psy_cfg.drv_data = info;
     info->psy_cfg.of_node  = info->client->dev.of_node;
-    info->psy_desc.name 		= "bq2597x-master";
+    info->psy_desc.name 		= "bq2597x-standalone";
     info->psy_desc.type 		= POWER_SUPPLY_TYPE_MAINS;
     info->psy_desc.properties	= ln8000_charger_props;
     info->psy_desc.num_properties = ARRAY_SIZE(ln8000_charger_props);
@@ -1647,7 +1638,6 @@ static int ln8000_probe(struct i2c_client *client, const struct i2c_device_id *i
     }
 
     determine_initial_status(info);
-    hardwareinfo_set_prop(HARDWARE_SUB_CHARGER_MASTER, "LN8000_CHARGER_MASTER");
 
     return 0;
 
