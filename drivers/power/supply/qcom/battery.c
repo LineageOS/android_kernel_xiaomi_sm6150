@@ -1222,6 +1222,8 @@ static int pl_fv_vote_callback(struct votable *votable, void *data,
 	struct pl_data *chip = data;
 	union power_supply_propval pval = {0, };
 	int rc = 0;
+	static struct power_supply *cp_psy = NULL;
+	bool cp_charge_enabled = false;
 
 	if (fv_uv < 0)
 		return 0;
@@ -1229,7 +1231,20 @@ static int pl_fv_vote_callback(struct votable *votable, void *data,
 	if (!chip->main_psy)
 		return 0;
 
-	pval.intval = fv_uv;
+	cp_psy = power_supply_get_by_name("bq2597x-standalone");
+	if (cp_psy) {
+		rc = power_supply_get_property(cp_psy,
+				POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
+		if (!rc)
+			cp_charge_enabled = pval.intval;
+	}
+
+	if (cp_charge_enabled) {
+		pr_err("%s cp_enable, force fv : 4790000\n", __func__);
+		pval.intval = 4790000;
+	} else {
+		pval.intval = fv_uv;
+	}
 
 	rc = power_supply_set_property(chip->main_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_MAX, &pval);
