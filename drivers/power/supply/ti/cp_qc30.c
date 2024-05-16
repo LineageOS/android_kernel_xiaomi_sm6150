@@ -135,6 +135,9 @@ static pm_t pm_state;
 
 static int fc2_taper_timer;
 static int ibus_lmt_change_timer;
+#ifdef CONFIG_K6_CHARGE
+static int reverse_count;
+#endif
 
 static struct power_supply *cp_get_sw_psy(void)
 {
@@ -1146,13 +1149,24 @@ void cp_statemachine(unsigned int port)
 
 	case CP_STATE_FLASH2_ENTRY_3:
 #ifdef CONFIG_K6_CHARGE
-		if (pm_state.bq2597x.bus_error_status == VBUS_ERROR_HIGH) {
+		if (pm_state.bq2597x.bus_error_status == VBUS_ERROR_HIGH ||
+				pm_state.bq2597x.vbus_volt >
+				pm_state.bq2597x.vbat_volt * 2 + 400) {
+			reverse_count = 0;
 			pr_err("vvbus=%d, too high to open cp switcher, decrease it.\n",
 					pm_state.bq2597x.vbus_volt);
 			cp_tune_vbus_volt(VOLT_DOWN);
 		} else if (pm_state.bq2597x.bus_error_status == VBUS_ERROR_LOW) {
 			pr_err("vvbus=%d, too low to open cp switcher, increase it.\n",
 					pm_state.bq2597x.vbus_volt);
+			if (pm_state.bq2597x.vbus_volt <= 4500)
+				reverse_count++;
+			if (reverse_count >= 3) {
+				pr_err("cp enable cause reverse boost, turn off cp\n");
+				reverse_count = 0;
+				cp_enable_fc(false);
+				cp_move_state(CP_STATE_DISCONNECT);
+			}
 			cp_tune_vbus_volt(VOLT_UP);
 #else
 		if (pm_state.bq2597x.vbus_volt >
@@ -1161,6 +1175,9 @@ void cp_statemachine(unsigned int port)
 			/* voltage is too high, wait for voltage down, keep charge disabled to discharge */
 #endif
 		} else {
+#ifdef CONFIG_K6_CHARGE
+			reverse_count = 0;
+#endif
 			pr_err("vbat volt is ok, enable flash charging\n");
 			if (!pm_state.bq2597x.charge_enabled) {
 				cp_enable_fc(true);
@@ -1252,12 +1269,18 @@ static void cp_workfunc(struct work_struct *work)
 	if (pm_state.usb_present == 0) {
 		cp_set_qc_bus_protections(HVDCP3_NONE);
 		cp_set_fake_hvdcp3(false);
+#ifdef CONFIG_K6_CHARGE
+		pm_state.state = CP_STATE_DISCONNECT;
+#endif
 		return;
 	}
 
 	if (pm_state.usb_type == POWER_SUPPLY_TYPE_USB_HVDCP_3) {
 #ifdef CONFIG_K6_CHARGE
-		schedule_delayed_work(&pm_state.qc3_pm_work, msecs_to_jiffies(300));
+		if (reverse_count)
+			schedule_delayed_work(&pm_state.qc3_pm_work, msecs_to_jiffies(100));
+		else
+			schedule_delayed_work(&pm_state.qc3_pm_work, msecs_to_jiffies(300));
 #else
 		schedule_delayed_work(&pm_state.qc3_pm_work, HZ);
 #endif
