@@ -744,6 +744,9 @@ int smblib_set_charge_param(struct smb_charger *chg,
 	if (!chg->cp_psy)
 		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
 
+	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("ln8000");
+
 	if (chg->cp_psy && param->reg == CHGR_FLOAT_VOLTAGE_CFG_REG) {
 		power_supply_get_property(chg->cp_psy, POWER_SUPPLY_PROP_CP_VBAT_CALIBRATE, &val);
 		if (val.intval >= -20000 && val.intval <= 20000) {
@@ -893,6 +896,33 @@ int smblib_get_fastcharge_mode(struct smb_charger *chg)
 	return pval.intval;
 }
 
+static int set_ln8000_fv(struct smb_charger *chg) {
+	int rc;
+	union power_supply_propval val;
+	if (!chg->cp_psy) {
+		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
+		if (!chg->cp_psy){
+			chg->cp_psy = power_supply_get_by_name("ln8000");
+			if (!chg->cp_psy){
+				pr_err("cp_psy not found\n");
+				return 0;
+			}
+		}
+	}
+
+	rc = power_supply_get_property(chg->cp_psy,
+				POWER_SUPPLY_PROP_MODEL_NAME, &val);
+	if (rc < 0) {
+		pr_err("Error in getting charge IC name, rc=%d\n", rc);
+		return 0;
+	}
+
+	if (strcmp(val.strval, "ln8000") == 0) {
+		vote(chg->fv_votable, BATT_LN8000_VOTER, true, 4470000);
+	}
+	return 0;
+}
+
 int smblib_set_fastcharge_mode(struct smb_charger *chg, bool enable)
 {
 	union power_supply_propval pval = {0,};
@@ -959,6 +989,7 @@ int smblib_set_fastcharge_mode(struct smb_charger *chg, bool enable)
 	if (enable) {
 		/* ffc need clear 4.4V non_fcc_vfloat_voter first */
 		vote(chg->fv_votable, NON_FFC_VFLOAT_VOTER, false, 0);
+		set_ln8000_fv(chg);
 		rc = power_supply_get_property(chg->bms_psy,
 				POWER_SUPPLY_PROP_FFC_CHG_TERMINATION_CURRENT, &pval);
 		if (rc < 0) {
@@ -2660,6 +2691,9 @@ static bool is_bq25970_available(struct smb_charger *chg)
 		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
 
 	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("ln8000");
+
+	if (!chg->cp_psy)
 		return false;
 
 	return true;
@@ -3984,6 +4018,72 @@ static int smblib_set_sw_conn_therm_regulation(struct smb_charger *chg,
 	}
 
 	return rc;
+}
+
+static void smblib_reverse_boost_work(struct work_struct *work)
+{
+	struct smb_charger *chg = container_of(work, struct smb_charger, reverse_boost_work.work);
+	union power_supply_propval pval = {0, };
+	int rc = 0;
+	u8 reg = 0;
+
+	if (!chg->reverse_boost_wa)
+		return;
+
+	if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_CDP || chg->real_charger_type == POWER_SUPPLY_TYPE_USB)
+		return;
+	else if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_HVDCP_3 && chg->real_charger_type != POWER_SUPPLY_TYPE_USB_HVDCP_3P5 && chg->pd_active != POWER_SUPPLY_PD_PPS_ACTIVE)
+		goto clear_count;
+
+	rc = smblib_read(chg, AICL_STATUS_REG, &reg);
+	if (rc < 0 || !(reg & ICL_MIN_BIT))
+		goto clear_count;
+
+	rc = smblib_read(chg, TYPE_C_SENSOR_SM_STATUS_REG, &reg);
+	if (rc < 0 || (reg & VBUS_VSAFE5V_BIT))
+		goto clear_count;
+
+	rc = smblib_read(chg, INT_RT_STS_REG, &reg);
+	if (rc < 0 || !(reg & USBIN_PLUGIN_RT_STS_BIT))
+		goto clear_count;
+
+	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
+
+        if (!chg->cp_psy)
+                chg->cp_psy = power_supply_get_by_name("ln8000");
+
+	if (!chg->bms_psy || !chg->cp_psy || !chg->usb_psy)
+		goto clear_count;
+
+	rc = power_supply_get_property(chg->cp_psy, POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
+	if (pval.intval)
+		goto clear_count;
+
+	rc = power_supply_get_property(chg->bms_psy, POWER_SUPPLY_PROP_CURRENT_NOW, &pval);
+	if ((pval.intval / 1000) <= REVERSE_BOOST_MIN_IBAT_MA)
+		goto clear_count;
+
+	rc = power_supply_get_property(chg->usb_psy, POWER_SUPPLY_PROP_INPUT_CURRENT_NOW, &pval);
+	if ((pval.intval / 1000) >= REVERSE_BOOST_MAX_IBUS_MA)
+		goto clear_count;
+
+	chg->reverse_count++;
+	goto recheck;
+
+clear_count:
+	chg->reverse_count = 0;
+
+recheck:
+	if (chg->reverse_count >= 2) {
+		smblib_masked_write(chg, USBIN_CMD_IL_REG, USBIN_SUSPEND_BIT, USBIN_SUSPEND_BIT);
+		msleep(250);
+		smblib_masked_write(chg, USBIN_CMD_IL_REG, USBIN_SUSPEND_BIT, 0);
+	} else {
+		schedule_delayed_work(&chg->reverse_boost_work, msecs_to_jiffies(REVERSE_BOOST_WORK_RECHECK_DELAY_MS));
+	}
+
+	return;
 }
 
 #define CHG_DETECT_CONN_THERM_US		120000000	/* 120sec */
@@ -6605,9 +6705,13 @@ static int check_reduce_fcc_condition(struct smb_charger *chg)
 
 	if (!chg->cp_psy) {
 		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
-		if (!chg->cp_psy)
-			pr_err("cp_psy not found\n");
-			return 0;
+		if (!chg->cp_psy){
+			chg->cp_psy = power_supply_get_by_name("ln8000");
+			if (!chg->cp_psy){
+				pr_err("cp_psy not found\n");
+				return 0;
+			}
+		}
 	}
 
 	rc = power_supply_get_property(chg->cp_psy,
@@ -6729,6 +6833,8 @@ void smblib_usb_plugin_hard_reset_locked(struct smb_charger *chg)
 	vbus_rising = (bool)(stat & USBIN_PLUGIN_RT_STS_BIT);
 
 	if (vbus_rising) {
+		chg->reverse_count = 0;
+		schedule_delayed_work(&chg->reverse_boost_work, msecs_to_jiffies(REVERSE_BOOST_WORK_START_DELAY_MS));
 		/* hold chg_awake wakeup source when charger is present */
 		vote(chg->awake_votable, CHG_AWAKE_VOTER, true, 0);
 		/* Remove FCC_STEPPER 1.5A init vote to allow FCC ramp up */
@@ -6750,6 +6856,8 @@ void smblib_usb_plugin_hard_reset_locked(struct smb_charger *chg)
 			}
 		}
 
+		chg->reverse_count = 0;
+		cancel_delayed_work_sync(&chg->reverse_boost_work);
 		cancel_delayed_work_sync(&chg->charger_type_recheck);
 		chg->hvdcp_recheck_status = false;
 		chg->recheck_charger = false;
@@ -6829,11 +6937,15 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 					msecs_to_jiffies(CHARGER_RECHECK_DELAY_MS));
 		schedule_delayed_work(&chg->cc_un_compliant_charge_work,
 					msecs_to_jiffies(CC_UN_COMPLIANT_START_DELAY_MS));
+		chg->reverse_count = 0;
+		schedule_delayed_work(&chg->reverse_boost_work, msecs_to_jiffies(REVERSE_BOOST_WORK_START_DELAY_MS));
 		if (chg->use_bq_pump)
 			schedule_delayed_work(&chg->reduce_fcc_work,
 						msecs_to_jiffies(ESR_WORK_TIME_180S));
 	} else {
 		cancel_delayed_work_sync(&chg->charger_type_recheck);
+		chg->reverse_count = 0;
+		cancel_delayed_work_sync(&chg->reverse_boost_work);
 		if (chg->use_bq_pump) {
 			cancel_delayed_work_sync(&chg->reduce_fcc_work);
 			vote(chg->fcc_votable, ESR_WORK_VOTER, false, 0);
@@ -10006,6 +10118,7 @@ int smblib_init(struct smb_charger *chg)
 	}
 	INIT_DELAYED_WORK(&chg->pr_lock_clear_work,
 					smblib_pr_lock_clear_work);
+        INIT_DELAYED_WORK(&chg->reverse_boost_work, smblib_reverse_boost_work);
 	if (chg->dcin_uusb_over_gpio_en)
 		INIT_DELAYED_WORK(&chg->micro_usb_switch_work,
 					smblib_micro_usb_switch_work);
@@ -10181,6 +10294,7 @@ int smblib_deinit(struct smb_charger *chg)
 		cancel_delayed_work_sync(&chg->six_pin_batt_step_chg_work);
 		cancel_delayed_work_sync(&chg->role_reversal_check);
 		cancel_delayed_work_sync(&chg->pr_swap_detach_work);
+		cancel_delayed_work_sync(&chg->reverse_boost_work);
 		power_supply_unreg_notifier(&chg->nb);
 		smblib_destroy_votables(chg);
 		qcom_step_chg_deinit();

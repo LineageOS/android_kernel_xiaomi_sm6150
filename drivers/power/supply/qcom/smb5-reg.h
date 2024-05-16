@@ -138,6 +138,7 @@ enum {
 
 #define AICL_STATUS_REG				(DCDC_BASE + 0x0A)
 #define SOFT_ILIMIT_BIT				BIT(6)
+#define ICL_MIN_BIT				BIT(2)
 #define AICL_DONE_BIT				BIT(0)
 
 #define POWER_PATH_STATUS_REG			(DCDC_BASE + 0x0B)
@@ -232,6 +233,9 @@ enum {
 #define QC_9V_BIT				BIT(1)
 #define QC_5V_BIT				BIT(0)
 #define QC_2P0_STATUS_MASK			GENMASK(2, 0)
+
+#define INT_RT_STS_REG				(USBIN_BASE + 0x10)
+#define USBIN_PLUGIN_RT_STS_BIT			BIT(4)
 
 /* USBIN Interrupt Bits */
 #define USBIN_ICL_CHANGE_RT_STS_BIT		BIT(7)
@@ -385,6 +389,9 @@ enum {
 
 #define TYPE_C_STATE_MACHINE_STATUS_REG		(TYPEC_BASE + 0x09)
 #define TYPEC_ATTACH_DETACH_STATE_BIT		BIT(5)
+
+#define TYPE_C_SENSOR_SM_STATUS_REG		(TYPEC_BASE + 0x0A)
+#define VBUS_VSAFE5V_BIT			BIT(5)
 
 #define TYPE_C_MISC_STATUS_REG			(TYPEC_BASE + 0x0B)
 #define TYPEC_WATER_DETECTION_STATUS_BIT	BIT(7)
