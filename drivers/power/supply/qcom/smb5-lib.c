@@ -2660,6 +2660,9 @@ static bool is_bq25970_available(struct smb_charger *chg)
 		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
 
 	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("ln8000");
+
+	if (!chg->cp_psy)
 		return false;
 
 	return true;
