@@ -32,7 +32,7 @@
 #define PD_SRC_PDO_TYPE_VARIABLE	2
 #define PD_SRC_PDO_TYPE_AUGMENTED	3
 
-#define BATT_MAX_CHG_VOLT		4400
+#define BATT_MAX_CHG_VOLT		4450
 #define BATT_FAST_CHG_CURR		6000
 #define	BUS_OVP_THRESHOLD		12000
 #define	BUS_OVP_ALARM_THRESHOLD		9500
@@ -140,6 +140,30 @@ static int pd_get_batt_current_thermal_level(struct usbpd_pm *pdpm, int *level)
 	pr_debug("pval.intval: %d\n", pval.intval);
 
 	*level = pval.intval;
+	return rc;
+}
+
+/* get capacity from battery power supply property */
+static int pd_get_batt_capacity(struct usbpd_pm *pdpm, int *capacity)
+{
+	union power_supply_propval pval = {0,};
+	int rc = 0;
+
+	usbpd_check_batt_psy(pdpm);
+
+	if (!pdpm->sw_psy)
+		return -ENODEV;
+
+	rc = power_supply_get_property(pdpm->sw_psy,
+				POWER_SUPPLY_PROP_CAPACITY, &pval);
+	if (rc < 0) {
+		pr_info("Couldn't get battery capacity:%d\n", rc);
+		return rc;
+	}
+
+	pr_info("battery capacity is : %d\n", pval.intval);
+
+	*capacity = pval.intval;
 	return rc;
 }
 
@@ -338,7 +362,11 @@ static void usbpd_check_cp_psy(struct usbpd_pm *pdpm)
 		else
 			pdpm->cp_psy = power_supply_get_by_name("bq2597x-standalone");
 		if (!pdpm->cp_psy)
-			pr_err("cp_psy not found\n");
+		{
+			pdpm->cp_psy = power_supply_get_by_name("ln8000");
+			if (!pdpm->cp_psy)
+				pr_err("cp_psy not found\n");
+		}
 	}
 }
 
@@ -1136,6 +1164,7 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 	int thermal_level = 0;
 	static int curr_fcc_lmt, curr_ibus_lmt, retry_count;
 	static int request_fail_count = 0;
+	int capacity = 0;
 
 	switch (pdpm->state) {
 	case PD_PM_STATE_ENTRY:
@@ -1148,6 +1177,7 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 		pdpm->is_temp_out_fc2_range = pd_disable_cp_by_jeita_status(pdpm);
 		pr_info("is_temp_out_fc2_range:%d\n", pdpm->is_temp_out_fc2_range);
 
+		pd_get_batt_capacity(pdpm, &capacity);
 		effective_fcc_val = usbpd_get_effective_fcc_val(pdpm);
 
 		if (effective_fcc_val > 0) {
@@ -1161,8 +1191,8 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 
 		if (pdpm->cp.vbat_volt < pm_config.min_vbat_for_cp) {
 			pr_info("batt_volt %d, waiting...\n", pdpm->cp.vbat_volt);
-		} else if (pdpm->cp.vbat_volt > pm_config.bat_volt_lp_lmt - 50) {
-			pr_info("batt_volt %d is too high for cp, charging with switch charger\n",
+		} else if (pdpm->cp.vbat_volt > pm_config.bat_volt_lp_lmt - 50 || capacity > 95) {
+			pr_info("batt_volt %d or capacity is too high for cp, charging with switch charger\n",
 					pdpm->cp.vbat_volt);
 			usbpd_pm_move_state(pdpm, PD_PM_STATE_FC2_EXIT);
 			if (pm_config.bat_volt_lp_lmt < BAT_VOLT_LOOP_LMT)
