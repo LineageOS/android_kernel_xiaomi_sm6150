@@ -952,7 +952,7 @@ static int ln8000_charger_get_property(struct power_supply *psy,
         }
         break;
     case POWER_SUPPLY_PROP_MODEL_NAME:
-        val->strval = "bq2597x-master";
+        val->strval = "bq2597x-standalone";
         break;
     default:
         return -EINVAL;
@@ -1535,7 +1535,7 @@ static int ln8000_psy_register(struct ln8000_info *info)
 {
     info->psy_cfg.drv_data = info;
     info->psy_cfg.of_node  = info->client->dev.of_node;
-    info->psy_desc.name 		= "bq2597x-master";
+    info->psy_desc.name 		= "bq2597x-standalone";
     info->psy_desc.type 		= POWER_SUPPLY_TYPE_MAINS;
     info->psy_desc.properties	= ln8000_charger_props;
     info->psy_desc.num_properties = ARRAY_SIZE(ln8000_charger_props);
