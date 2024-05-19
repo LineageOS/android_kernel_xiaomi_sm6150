@@ -35,7 +35,6 @@
 #include <linux/sysfs.h>
 #include <linux/debugfs.h>
 #include <linux/types.h>
-#include <linux/hardware_info.h>
 //#include <linux/power/ln8000_charger.h>
 #include "ln8000_charger.h"
 #include "cp_qc30.h"
@@ -1647,7 +1646,6 @@ static int ln8000_probe(struct i2c_client *client, const struct i2c_device_id *i
     }
 
     determine_initial_status(info);
-    hardwareinfo_set_prop(HARDWARE_SUB_CHARGER_MASTER, "LN8000_CHARGER_MASTER");
 
     return 0;
 
