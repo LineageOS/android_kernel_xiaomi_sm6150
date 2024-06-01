@@ -1561,7 +1561,7 @@ static void __exit sf_ctl_driver_exit(void)
     xprintk(KERN_INFO, "fortsense fingerprint device control driver released.\n");
 }
 
-module_init(sf_ctl_driver_init);
+late_initcall(sf_ctl_driver_init);
 module_exit(sf_ctl_driver_exit);
 
 MODULE_DESCRIPTION("The device control driver for Fortsense's fingerprint sensor.");
