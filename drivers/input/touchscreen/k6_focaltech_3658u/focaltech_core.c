@@ -2235,6 +2235,8 @@ err_power_init:fts_power_source_exit(ts_data);
 		gpio_free(ts_data->pdata->reset_gpio);
 	if (gpio_is_valid(ts_data->pdata->irq_gpio))
 		gpio_free(ts_data->pdata->irq_gpio);
+	if (gpio_is_valid(ts_data->pdata->vcc_i2c))
+		gpio_free(ts_data->pdata->vcc_i2c);
 err_gpio_config:kfree_safe(ts_data->touch_buf);
 err_buffer_init:input_unregister_device(ts_data->input_dev);
 
