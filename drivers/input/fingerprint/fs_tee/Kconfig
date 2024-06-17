@@ -1,6 +1,6 @@
 config FINGERPRINT_FS_TEE
 	tristate "FortSense Fingerprint"
-	default y
+	default n
 	help
 	  If you say Y to this option, support will be included for 
 	  the FortSense's fingerprint sensor. This driver supports 
