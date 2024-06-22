@@ -1156,6 +1156,7 @@ struct proto {
 
 int proto_register(struct proto *prot, int alloc_slab);
 void proto_unregister(struct proto *prot);
+int sock_load_diag_module(int family, int protocol);
 
 #ifdef SOCK_REFCNT_DEBUG
 static inline void sk_refcnt_debug_inc(struct sock *sk)
@@ -1534,6 +1535,13 @@ static inline void sock_owned_by_me(const struct sock *sk)
 {
 #ifdef CONFIG_LOCKDEP
 	WARN_ON_ONCE(!lockdep_sock_is_held(sk) && debug_locks);
+#endif
+}
+
+static inline void sock_not_owned_by_me(const struct sock *sk)
+{
+#ifdef CONFIG_LOCKDEP
+	WARN_ON_ONCE(lockdep_sock_is_held(sk) && debug_locks);
 #endif
 }
 
@@ -2083,6 +2091,8 @@ void sk_reset_timer(struct sock *sk, struct timer_list *timer,
 		    unsigned long expires);
 
 void sk_stop_timer(struct sock *sk, struct timer_list *timer);
+
+void sk_stop_timer_sync(struct sock *sk, struct timer_list *timer);
 
 int __sk_queue_drop_skb(struct sock *sk, struct sk_buff_head *sk_queue,
 			struct sk_buff *skb, unsigned int flags,

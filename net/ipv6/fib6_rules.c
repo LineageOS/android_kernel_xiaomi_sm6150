@@ -94,6 +94,31 @@ struct dst_entry *fib6_rule_lookup(struct net *net, struct flowi6 *fl6,
 	return &net->ipv6.ip6_null_entry->dst;
 }
 
+static int fib6_rule_saddr(struct net *net, struct fib_rule *rule, int flags,
+			   struct flowi6 *flp6, const struct net_device *dev)
+{
+	struct fib6_rule *r = (struct fib6_rule *)rule;
+
+	/* If we need to find a source address for this traffic,
+	 * we check the result if it meets requirement of the rule.
+	 */
+	if ((rule->flags & FIB_RULE_FIND_SADDR) &&
+	    r->src.plen && !(flags & RT6_LOOKUP_F_HAS_SADDR)) {
+		struct in6_addr saddr;
+
+		if (ipv6_dev_get_saddr(net, dev, &flp6->daddr,
+				       rt6_flags2srcprefs(flags), &saddr))
+			return -EAGAIN;
+
+		if (!ipv6_prefix_equal(&saddr, &r->src.addr, r->src.plen))
+			return -EAGAIN;
+
+		flp6->saddr = saddr;
+	}
+
+	return 0;
+}
+
 static int fib6_rule_action(struct fib_rule *rule, struct flowi *flp,
 			    int flags, struct fib_lookup_arg *arg)
 {
@@ -132,27 +157,16 @@ static int fib6_rule_action(struct fib_rule *rule, struct flowi *flp,
 
 	rt = lookup(net, table, flp6, flags);
 	if (rt != net->ipv6.ip6_null_entry) {
-		struct fib6_rule *r = (struct fib6_rule *)rule;
+		struct inet6_dev *idev = ip6_dst_idev(&rt->dst);
 
-		/*
-		 * If we need to find a source address for this traffic,
-		 * we check the result if it meets requirement of the rule.
-		 */
-		if ((rule->flags & FIB_RULE_FIND_SADDR) &&
-		    r->src.plen && !(flags & RT6_LOOKUP_F_HAS_SADDR)) {
-			struct in6_addr saddr;
+		if (!idev)
+			goto again;
+		err = fib6_rule_saddr(net, rule, flags, flp6,
+				      idev->dev);
 
-			if (ipv6_dev_get_saddr(net,
-					       ip6_dst_idev(&rt->dst)->dev,
-					       &flp6->daddr,
-					       rt6_flags2srcprefs(flags),
-					       &saddr))
-				goto again;
-			if (!ipv6_prefix_equal(&saddr, &r->src.addr,
-					       r->src.plen))
-				goto again;
-			flp6->saddr = saddr;
-		}
+		if (err == -EAGAIN)
+			goto again;
+
 		err = rt->dst.error;
 		if (err != -EAGAIN)
 			goto out;
@@ -315,6 +329,11 @@ static size_t fib6_rule_nlmsg_payload(struct fib_rule *rule)
 	       + nla_total_size(16); /* src */
 }
 
+static void fib6_rule_flush_cache(struct fib_rules_ops *ops)
+{
+	rt_genid_bump_ipv6(ops->fro_net);
+}
+
 static const struct fib_rules_ops __net_initconst fib6_rules_ops_template = {
 	.family			= AF_INET6,
 	.rule_size		= sizeof(struct fib6_rule),
@@ -326,6 +345,7 @@ static const struct fib_rules_ops __net_initconst fib6_rules_ops_template = {
 	.compare		= fib6_rule_compare,
 	.fill			= fib6_rule_fill,
 	.nlmsg_payload		= fib6_rule_nlmsg_payload,
+	.flush_cache		= fib6_rule_flush_cache,
 	.nlgroup		= RTNLGRP_IPV6_RULE,
 	.policy			= fib6_rule_policy,
 	.owner			= THIS_MODULE,
