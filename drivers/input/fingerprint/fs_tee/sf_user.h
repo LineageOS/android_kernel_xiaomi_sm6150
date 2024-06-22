@@ -14,7 +14,7 @@
 // debug log select
 #define SF_LOG_ENABLE               1
 // xiaomi fast unblank
-#define XIAOMI_DRM_INTERFACE_WA     1
+#define XIAOMI_DRM_INTERFACE_WA     0
 //-----------------------------------------------------------------------------
 
 /* Dts node. */
