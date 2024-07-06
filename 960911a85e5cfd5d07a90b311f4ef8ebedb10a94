@@ -1,0 +1,38 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "893d0b2c_f581f310",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 22465
+      },
+      "writtenOn": "2024-07-06T17:30:42Z",
+      "side": 1,
+      "message": "All the `power_supply_get_by_name(\"ln8000\")` changes shouldn\u0027t be needed/do anything - as with https://review.lineageos.org/c/LineageOS/android_kernel_xiaomi_sm6150/+/396752/1 we should just need \"bq2597x-standalone\".",
+      "revId": "960911a85e5cfd5d07a90b311f4ef8ebedb10a94",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "dd7e25b6_598433ce",
+        "filename": "drivers/power/supply/qcom/qpnp-qg.c",
+        "patchSetId": 3
+      },
+      "lineNbr": 2153,
+      "author": {
+        "id": 22465
+      },
+      "writtenOn": "2024-07-06T17:30:42Z",
+      "side": 1,
+      "message": "The only change stock has is this block of code",
+      "revId": "960911a85e5cfd5d07a90b311f4ef8ebedb10a94",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
