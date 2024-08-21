@@ -38,7 +38,7 @@ static inline int wsa_macro_set_spkr_mode(struct snd_soc_codec *codec, int mode)
 	return 0;
 }
 static inline int wsa_macro_set_spkr_gain_offset(struct snd_soc_codec *codec,
-						 int offset);
+						 int offset)
 {
 	return 0;
 }
