@@ -16,6 +16,24 @@
       "message": "Why do you drop the help texts for sdmmagpie/sm6150/xiaomi?",
       "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "b863a3c0_a352fe2d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 29080
+      },
+      "writtenOn": "2024-08-23T12:30:38Z",
+      "side": 1,
+      "message": "To make them non-selectable because it makes no sense when they\u0027re auto selected by device configs",
+      "parentUuid": "ab07d43e_3b92f585",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
