@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "ab07d43e_3b92f585",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 21290
+      },
+      "writtenOn": "2024-08-23T11:14:06Z",
+      "side": 1,
+      "message": "Why do you drop the help texts for sdmmagpie/sm6150/xiaomi?",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
