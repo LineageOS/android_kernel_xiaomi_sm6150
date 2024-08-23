@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "0dcc1d97_7191e506",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 22465
+      },
+      "writtenOn": "2024-08-23T08:47:13Z",
+      "side": 1,
+      "message": "While at it, maybe keep space/tab consistency in menu \"Xiaomi configuration options\" ... endmenu?",
+      "revId": "09be655645702775372041eac04821093d4caefd",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
