@@ -87,6 +87,24 @@
       "parentUuid": "6dea9d1e_b6095771",
       "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "35e9ed4e_adcbffa1",
+        "filename": "arch/arm64/Kconfig",
+        "patchSetId": 3
+      },
+      "lineNbr": 1526,
+      "author": {
+        "id": 21290
+      },
+      "writtenOn": "2024-08-23T13:28:36Z",
+      "side": 1,
+      "message": "If they actually conflict with each other you could add depends on !MACH_XIAOMI_SWEET to sweet2",
+      "parentUuid": "11239d8a_108e2ed0",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
