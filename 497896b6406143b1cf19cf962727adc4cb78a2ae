@@ -69,6 +69,24 @@
       "message": "Is there any reason to move to choice?\nWhy do we want to forbid building with support for more than one device?\nI don\u0027t see a logical reason to make them mutually exclusive.",
       "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "11239d8a_108e2ed0",
+        "filename": "arch/arm64/Kconfig",
+        "patchSetId": 3
+      },
+      "lineNbr": 1526,
+      "author": {
+        "id": 29080
+      },
+      "writtenOn": "2024-08-23T13:26:21Z",
+      "side": 1,
+      "message": "sweet2 will conflict with sweet, I see no other sane option",
+      "parentUuid": "6dea9d1e_b6095771",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
