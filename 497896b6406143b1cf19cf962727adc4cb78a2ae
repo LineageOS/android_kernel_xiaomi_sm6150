@@ -74,6 +74,24 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "fdfa964f_a01d92ae",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 21290
+      },
+      "writtenOn": "2024-08-23T14:12:45Z",
+      "side": 1,
+      "message": "They are no-op currently but conceptionally i don\u0027t see a need to forbid enabling it standalone.\nIf it\u0027s a problem that they are no-op currently we should remove them instead of arbitrarily restricting them imo.",
+      "parentUuid": "37fa7c41_e7a56b80",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "6dea9d1e_b6095771",
         "filename": "arch/arm64/Kconfig",
         "patchSetId": 3
@@ -139,6 +157,24 @@
       "side": 1,
       "message": "violet conflicts with every other device due to audio, camera and drm changes\n\nother devices conflict with each other due to different configs selected in audio-kernel\n\nthis could be fixed by switching to runtime checks but are we actually going to ever ship unified kernel?",
       "parentUuid": "35e9ed4e_adcbffa1",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "e8010ee9_90c8b0b3",
+        "filename": "arch/arm64/Kconfig",
+        "patchSetId": 3
+      },
+      "lineNbr": 1526,
+      "author": {
+        "id": 21290
+      },
+      "writtenOn": "2024-08-23T14:12:45Z",
+      "side": 1,
+      "message": "Shipping a unified kernel is unlikely to happen. Despite the audio issues, there could be a gain in enabling multiple devices to at least get them booting and include their devicetree for some builds even if that never goes into any shipped builds.",
+      "parentUuid": "1e79e03a_333ffaf3",
       "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
