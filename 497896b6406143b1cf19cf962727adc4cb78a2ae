@@ -54,6 +54,24 @@
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "37fa7c41_e7a56b80",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 29080
+      },
+      "writtenOn": "2024-08-23T13:44:40Z",
+      "side": 1,
+      "message": "what would be the point of it? the only thing that comes to my mind is building dtbs for every supported device but currently those configs are no-op",
+      "parentUuid": "f322919c_f0178cd5",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "6dea9d1e_b6095771",
@@ -103,6 +121,24 @@
       "side": 1,
       "message": "If they actually conflict with each other you could add depends on !MACH_XIAOMI_SWEET to sweet2",
       "parentUuid": "11239d8a_108e2ed0",
+      "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "1e79e03a_333ffaf3",
+        "filename": "arch/arm64/Kconfig",
+        "patchSetId": 3
+      },
+      "lineNbr": 1526,
+      "author": {
+        "id": 29080
+      },
+      "writtenOn": "2024-08-23T13:44:40Z",
+      "side": 1,
+      "message": "violet conflicts with every other device due to audio, camera and drm changes\n\nother devices conflict with each other due to different configs selected in audio-kernel\n\nthis could be fixed by switching to runtime checks but are we actually going to ever ship unified kernel?",
+      "parentUuid": "35e9ed4e_adcbffa1",
       "revId": "497896b6406143b1cf19cf962727adc4cb78a2ae",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
