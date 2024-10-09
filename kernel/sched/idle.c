@@ -246,6 +246,8 @@ static void do_idle(void)
 		check_pgt_cache();
 		rmb();
 
+		local_irq_disable();
+
 		if (cpu_is_offline(smp_processor_id())) {
 			tick_nohz_idle_stop_tick_protected();
 			cpuhp_report_idle_dead();
