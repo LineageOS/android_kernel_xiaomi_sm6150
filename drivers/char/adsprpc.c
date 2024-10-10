@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2784,8 +2785,11 @@ static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl, int locked)
 		}
 	} while (match);
 bail:
-	if (err && match)
+	if (err && match) {
+		mutex_lock(&fl->map_mutex);
 		fastrpc_mmap_add_global(match);
+		mutex_unlock(&fl->map_mutex);
+	}
 	return err;
 }
 
