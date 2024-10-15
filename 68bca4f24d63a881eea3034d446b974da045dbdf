@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "ccf2c470_fe33e09e",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2024-10-15T18:11:38Z",
+      "side": 1,
+      "message": "This should probably go on qcom_sm8150, I\u0027ll push it there after trimming down the BPF changes.",
+      "revId": "68bca4f24d63a881eea3034d446b974da045dbdf",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
