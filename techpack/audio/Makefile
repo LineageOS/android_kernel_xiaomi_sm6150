@@ -48,6 +48,10 @@ ifeq ($(CONFIG_MACH_XIAOMI_PHOENIX), y)
 include $(srctree)/techpack/audio/config/xiaomi/phoenixauto.conf
 export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/xiaomi/phoenixauto.conf)
 endif
+ifeq ($(CONFIG_MACH_XIAOMI_SURYA), y)
+include $(srctree)/techpack/audio/config/xiaomi/suryaauto.conf
+export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/xiaomi/suryaauto.conf)
+endif
 ifeq ($(CONFIG_MACH_XIAOMI_SWEET), y)
 include $(srctree)/techpack/audio/config/xiaomi/sweetauto.conf
 export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/xiaomi/sweetauto.conf)
@@ -123,6 +127,10 @@ endif
 ifeq ($(CONFIG_MACH_XIAOMI_PHOENIX), y)
 LINUXINCLUDE    += \
                 -include $(srctree)/techpack/audio/config/xiaomi/phoenixautoconf.h
+endif
+ifeq ($(CONFIG_MACH_XIAOMI_SURYA), y)
+LINUXINCLUDE    += \
+                -include $(srctree)/techpack/audio/config/xiaomi/suryaautoconf.h
 endif
 ifeq ($(CONFIG_MACH_XIAOMI_SWEET), y)
 LINUXINCLUDE    += \
