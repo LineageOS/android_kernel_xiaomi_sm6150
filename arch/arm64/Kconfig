@@ -1552,6 +1552,12 @@ config MACH_XIAOMI_PHOENIX
         help
           Support for Redmi K30, codenamed phoenix.
 
+config MACH_XIAOMI_SURYA
+        bool "surya board"
+        select MACH_XIAOMI_SDMMAGPIE
+        help
+          Support for POCO X3 NFC, codenamed surya.
+
 config MACH_XIAOMI_SWEET
         bool "sweet board"
         select MACH_XIAOMI_SDMMAGPIE
