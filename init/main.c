@@ -535,7 +535,7 @@ static void __init mm_init(void)
 	pti_init();
 }
 
-#ifdef CONFIG_MACH_XIAOMI_VIOLET
+#if defined(CONFIG_MACH_XIAOMI_SURYA) || defined(CONFIG_MACH_XIAOMI_VIOLET)
 int fpsensor;
 #endif
 
@@ -575,7 +575,7 @@ asmlinkage __visible void __init start_kernel(void)
 	/* parameters may set static keys */
 	jump_label_init();
 
-#ifdef CONFIG_MACH_XIAOMI_VIOLET
+#if defined(CONFIG_MACH_XIAOMI_SURYA) || defined(CONFIG_MACH_XIAOMI_VIOLET)
 	fpsensor = strstr(command_line, "androidboot.fpsensor=fpc") ? 1 : 2;
 #endif
 
