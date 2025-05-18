@@ -1,0 +1,13 @@
+&icp_iova_mem_map {
+	iova-mem-region-io {
+		iova-region-len = <0xD9900000>;
+	};
+};
+
+&cam_fd {
+	clock-rates =
+		<600000000 0 0>,
+		<600000000 0 0>,
+		<600000000 0 0>,
+		<600000000 0 0>;
+};

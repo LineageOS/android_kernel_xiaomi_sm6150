@@ -1,0 +1,18 @@
+&soc {
+	rpmh-regulator-ldoa18 {
+		compatible = "qcom,rpmh-vrm-regulator";
+	};
+};
+
+&L18A {
+	regulator-min-microvolt = <1696000>;
+	regulator-max-microvolt = <1904000>;
+};
+
+&L7C {
+	regulator-always-on;
+};
+
+&L8C {
+	regulator-always-on;
+};

@@ -1,0 +1,6 @@
+&soc {
+    /delete-node/ i2c@0xa84000;
+    /delete-node/ i2c@0xa88000;
+    /delete-node/ spi@0xa84000;
+    /delete-node/ spi@0xa88000;    
+};
