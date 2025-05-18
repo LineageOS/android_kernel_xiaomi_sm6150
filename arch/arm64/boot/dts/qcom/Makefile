@@ -15,6 +15,9 @@ davinci_m0b-sdmmagpie-overlay.dtbo-base := xiaomi-sdmmagpie.dtb
 dtbo-$(CONFIG_MACH_XIAOMI_PHOENIX) += phoenix-sdmmagpie-overlay.dtbo
 phoenix-sdmmagpie-overlay.dtbo-base := xiaomi-sdmmagpie.dtb
 
+dtbo-$(CONFIG_MACH_XIAOMI_SURYA) += surya-sdmmagpie-overlay.dtbo
+surya-sdmmagpie-overlay.dtbo-base := surya-sdmmagpie.dtb
+
 dtbo-$(CONFIG_MACH_XIAOMI_SWEET) += sweet-sdmmagpie-overlay.dtbo
 sweet-sdmmagpie-overlay.dtbo-base := xiaomi-sdmmagpie.dtb
 

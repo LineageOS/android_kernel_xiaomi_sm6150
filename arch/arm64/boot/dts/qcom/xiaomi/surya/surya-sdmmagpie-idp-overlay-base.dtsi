@@ -1,0 +1,6 @@
+#include "surya-sdmmagpie-sde-display.dtsi"
+#include "surya-sdmmagpie-idp.dtsi"
+#include "surya-sdmmagpie-camera-sensor-idp.dtsi"
+#include "surya-sm6150-audio-overlay.dtsi"
+#include "surya-haptic.dtsi"
+#include "surya-touchscreen.dtsi"

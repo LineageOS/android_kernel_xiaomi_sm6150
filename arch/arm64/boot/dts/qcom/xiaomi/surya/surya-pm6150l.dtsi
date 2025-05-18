@@ -1,0 +1,21 @@
+&flash_led {
+	qcom,flashlight_0 {
+		label = "flashlight";
+		qcom,led-name = "flashlight";
+		qcom,torch-name = "led:torch_0", "led:torch_1";
+		qcom,switch-name = "led:switch_0";
+		qcom,id = <0>;
+	};
+};
+
+&pm6150l_wled {
+	qcom,fs-current-limit = <25000>;
+	qcom,en-cabc;
+	qcom,cabc-sel = <1>;
+	status = "ok";
+};
+
+&pm6150l_lpg {
+	qcom,lut-patterns = <40 39 37 35 33 31 29 27 25 20 19
+				17 11 6 0 0 0 0 0 0 0>;
+};

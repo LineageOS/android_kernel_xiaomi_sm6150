@@ -1,0 +1,100 @@
+&bolero {
+	qcom,num-macros = <3>;
+};
+
+&wsa_macro {
+	/delete-property/ compatible;
+	/delete-property/ reg;
+	/delete-property/ clock-names;
+	/delete-property/ clocks;
+	/delete-property/ qcom,wsa-swr-gpios;
+	/delete-property/ qcom,wsa-bcl-pmic-params;
+};
+
+&swr0 {
+	/delete-property/ compatible;
+	/delete-property/ #address-cells;
+	/delete-property/ #size-cells;
+	/delete-property/ qcom,swr_master_id;
+	/delete-property/ swrm-io-base;
+	/delete-property/ interrupts;
+	/delete-property/ interrupt-names;
+	/delete-property/ qcom,swr-num-ports;
+	/delete-property/ qcom,swr-port-mapping;
+	/delete-property/ qcom,swr-num-dev;
+
+	/delete-node/ wsa881x@20170211;
+	/delete-node/ wsa881x@20170212;
+	/delete-node/ wsa881x@21170213;
+	/delete-node/ wsa881x@21170214;
+};
+
+&wcd937x_codec {
+	qcom,cdc-micbias1-mv = <2700>;
+	qcom,cdc-micbias2-mv = <2700>;
+	qcom,cdc-micbias3-mv = <2700>;
+};
+
+&sm6150_snd {
+	/delete-property/ qcom,ext-disp-audio-rx;
+	/delete-property/ qcom,wsa-devs;
+
+	qcom,audio-routing =
+		"AMIC1", "MIC BIAS1",
+		"MIC BIAS1", "Analog Mic1",
+		"AMIC2", "MIC BIAS2",
+		"MIC BIAS2", "Analog Mic2",
+		"AMIC3", "MIC BIAS3",
+		"MIC BIAS3", "Analog Mic3",
+		"TX DMIC0", "MIC BIAS1",
+		"MIC BIAS1", "Digital Mic0",
+		"TX DMIC1", "MIC BIAS1",
+		"MIC BIAS1", "Digital Mic1",
+		"TX DMIC2", "MIC BIAS3",
+		"MIC BIAS3", "Digital Mic2",
+		"TX DMIC3", "MIC BIAS3",
+		"MIC BIAS3", "Digital Mic3",
+		"TX_AIF1 CAP", "VA_MCLK",
+		"TX_AIF2 CAP", "VA_MCLK",
+		"RX AIF1 PB", "VA_MCLK",
+		"RX AIF2 PB", "VA_MCLK",
+		"RX AIF3 PB", "VA_MCLK",
+		"RX AIF4 PB", "VA_MCLK",
+		"HPHL_OUT", "VA_MCLK",
+		"HPHR_OUT", "VA_MCLK",
+		"AUX_OUT", "VA_MCLK",
+		"IN1_HPHL", "HPHL_OUT",
+		"IN2_HPHR", "HPHR_OUT",
+		"IN3_AUX", "AUX_OUT",
+		"TX SWR_ADC0", "ADC1_OUTPUT",
+		"TX SWR_ADC2", "ADC2_OUTPUT",
+		"WSA SRC0_INP", "SRC0",
+		"WSA_TX DEC0_INP", "TX DEC0 MUX",
+		"WSA_TX DEC1_INP", "TX DEC1 MUX",
+		"RX_TX DEC0_INP", "TX DEC0 MUX",
+		"RX_TX DEC1_INP", "TX DEC1 MUX",
+		"RX_TX DEC2_INP", "TX DEC2 MUX",
+		"RX_TX DEC3_INP", "TX DEC3 MUX",
+		"SpkrLeft IN", "WSA_SPK1 OUT",
+		"SpkrRight IN", "WSA_SPK2 OUT",
+		"WSA_SPK1 OUT", "VA_MCLK",
+		"WSA_SPK2 OUT", "VA_MCLK";
+	qcom,wsa-max-devs = <0>;
+
+	qcom,tert-mi2s-gpios = <&cdc_ter_mi2s_gpios>;
+};
+
+&soc {
+	/delete-node/ wsa_swr_clk_data_pinctrl;
+	/delete-node/ wsa_spkr_en1_pinctrl;
+	/delete-node/ wsa_spkr_en2_pinctrl;
+
+	cdc_ter_mi2s_gpios: msm_cdc_pinctrl_ter {
+		compatible = "qcom,msm-cdc-pinctrl";
+		pinctrl-names = "aud_active", "aud_sleep";
+		pinctrl-0 = <&ter_mi2s_sck_active &ter_mi2s_ws_active
+			    &ter_mi2s_sd0_active &ter_mi2s_sd1_active>;
+		pinctrl-1 = <&ter_mi2s_sck_sleep &ter_mi2s_ws_sleep
+			    &ter_mi2s_sd0_sleep &ter_mi2s_sd1_sleep>;
+	};
+};
