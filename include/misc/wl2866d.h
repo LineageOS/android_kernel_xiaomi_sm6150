@@ -26,8 +26,13 @@
 #define VIN2_3P3_VOL_MIN    3296000
 #define VIN2_3P3_VOL_MAX    3296000
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+int wl2866d_camera_power_up(uint16_t camera_id);
+int wl2866d_camera_power_down(uint16_t camera_id);
+#else
 int wl2866d_camera_power_up(int out_iotype);
 int wl2866d_camera_power_down(int out_iotype);
+#endif
 int wl2866d_camera_power_up_eeprom(void);
 int wl2866d_camera_power_down_eeprom(void);
 int wl2866d_camera_power_down_all(void);
@@ -53,8 +58,10 @@ enum {
 	OUT_AVDD2,
 	VOL_ENABLE,
 	VOL_DISABLE,
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 	DISCHARGE_ENABLE,
 	DISCHARGE_DISABLE,
+#endif
 };
 
 #endif /* __WL2866D_H */
