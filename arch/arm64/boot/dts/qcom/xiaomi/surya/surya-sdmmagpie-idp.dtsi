@@ -300,7 +300,7 @@
 	status = "ok";
 
 	wl2866d@28 {
-		compatible = "longcheer,wl2866d";
+		compatible = "xiaomi,wl2866d";
 		reg = <0x28>;
 		vin1-supply = <&pm6150l_s8>;
 		vin1-voltage-level = <1350000  1350000>;
