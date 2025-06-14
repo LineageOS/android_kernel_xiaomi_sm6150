@@ -32,6 +32,10 @@ ifeq ($(CONFIG_ARCH_SDMSHRIKE), y)
 include $(srctree)/techpack/audio/config/sm8150auto.conf
 export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/sm8150auto.conf)
 endif
+ifeq ($(CONFIG_ARCH_TRINKET), y)
+include $(srctree)/techpack/audio/config/trinketauto.conf
+export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/trinketauto.conf)
+endif
 ifeq ($(CONFIG_MACH_XIAOMI_COURBET), y)
 include $(srctree)/techpack/audio/config/xiaomi/courbetauto.conf
 export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/xiaomi/courbetauto.conf)
@@ -103,6 +107,10 @@ endif
 ifeq ($(CONFIG_ARCH_SDMSHRIKE), y)
 LINUXINCLUDE    += \
                 -include $(srctree)/techpack/audio/config/sm8150autoconf.h
+endif
+ifeq ($(CONFIG_ARCH_TRINKET), y)
+LINUXINCLUDE    += \
+                -include $(srctree)/techpack/audio/config/trinketautoconf.h
 endif
 ifeq ($(CONFIG_MACH_XIAOMI_COURBET), y)
 LINUXINCLUDE    += \
