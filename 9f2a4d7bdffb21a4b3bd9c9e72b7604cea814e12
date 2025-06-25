@@ -22,6 +22,30 @@
       },
       "revId": "9f2a4d7bdffb21a4b3bd9c9e72b7604cea814e12",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "100c8b0d_587fa7c9",
+        "filename": "arch/arm64/configs/vendor/sdmsteppe-perf_defconfig",
+        "patchSetId": 1
+      },
+      "lineNbr": 703,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2025-06-25T05:56:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "6492f0e8_0904608d",
+      "range": {
+        "startLine": 703,
+        "startChar": 0,
+        "endLine": 703,
+        "endChar": 17
+      },
+      "revId": "9f2a4d7bdffb21a4b3bd9c9e72b7604cea814e12",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
