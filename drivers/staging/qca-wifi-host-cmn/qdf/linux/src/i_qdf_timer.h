@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -51,7 +51,11 @@ struct __qdf_timer_t {
 	(qdf_timer_get_multiplier() * msecs_to_jiffies(msec))
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0)
+/*
+ * This is the shim function that is called by the kernel when the timer
+ * expires. It adapts the modern kernel timer API (which passes a pointer to
+ * timer_list) to the legacy callback format the driver expects.
+ */
 static inline void __os_timer_shim(struct timer_list *os_timer)
 {
 	struct __qdf_timer_t *timer = from_timer(timer, os_timer, os_timer);
@@ -59,12 +63,17 @@ static inline void __os_timer_shim(struct timer_list *os_timer)
 	timer->callback(timer->context);
 }
 
+/*
+ * This function initializes the timer. It uses the modern timer_setup() API
+ * which is correct for recent kernels and handles both stack and non-stack
+ * timers properly.
+ */
 static inline QDF_STATUS __qdf_timer_init(struct __qdf_timer_t *timer,
 					  qdf_timer_func_t func, void *arg,
 					  QDF_TIMER_TYPE type)
 {
 	struct timer_list *os_timer = &timer->os_timer;
-	uint32_t flags = 0;
+	unsigned int flags = 0;
 
 	timer->callback = func;
 	timer->context = arg;
@@ -72,56 +81,10 @@ static inline QDF_STATUS __qdf_timer_init(struct __qdf_timer_t *timer,
 	if (type == QDF_TIMER_TYPE_SW)
 		flags |= TIMER_DEFERRABLE;
 
-	if (object_is_on_stack(os_timer))
-		timer_setup_on_stack(os_timer, __os_timer_shim, flags);
-	else
-		timer_setup(os_timer, __os_timer_shim, flags);
+	timer_setup(os_timer, __os_timer_shim, flags);
 
 	return QDF_STATUS_SUCCESS;
 }
-
-#else
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
-#define setup_deferrable_timer(timer, fn, data) \
-	__setup_timer((timer), (fn), (data), TIMER_DEFERRABLE)
-#endif
-
-static inline void __os_timer_shim(unsigned long addr)
-{
-	struct __qdf_timer_t *timer = (void *)addr;
-
-	timer->callback(timer->context);
-}
-
-static inline QDF_STATUS __qdf_timer_init(struct __qdf_timer_t *timer,
-					  qdf_timer_func_t func, void *arg,
-					  QDF_TIMER_TYPE type)
-{
-	struct timer_list *os_timer = &timer->os_timer;
-	bool is_on_stack = object_is_on_stack(os_timer);
-	unsigned long addr = (unsigned long)timer;
-
-	timer->callback = func;
-	timer->context = arg;
-
-	if (type == QDF_TIMER_TYPE_SW) {
-		if (is_on_stack)
-			setup_deferrable_timer_on_stack(os_timer,
-							__os_timer_shim,
-							addr);
-		else
-			setup_deferrable_timer(os_timer, __os_timer_shim, addr);
-	} else {
-		if (is_on_stack)
-			setup_timer_on_stack(os_timer, __os_timer_shim, addr);
-		else
-			setup_timer(os_timer, __os_timer_shim, addr);
-	}
-
-	return QDF_STATUS_SUCCESS;
-}
-#endif /* KERNEL_VERSION(4, 15, 0)*/
 
 static inline void __qdf_timer_start(struct __qdf_timer_t *timer, uint32_t msec)
 {
