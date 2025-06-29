@@ -16,6 +16,23 @@
       "message": "breaks boot on some devices",
       "revId": "b3b6b9c11e414f536de05730a54fa8a78230a686",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "9cfde842_3143f137",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2025-06-29T21:15:19Z",
+      "side": 1,
+      "message": "Fine with If8cb67d968d0034bca7c2844f096ccaacbec85c7, merging downstream",
+      "revId": "b3b6b9c11e414f536de05730a54fa8a78230a686",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
