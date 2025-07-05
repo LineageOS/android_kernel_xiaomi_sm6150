@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "57aac769_ec568bdd",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2025-07-05T17:04:06Z",
+      "side": 1,
+      "message": "For 23, NFC does not crash on boot with this.",
+      "revId": "8bc4f98ec7f1a6f420d967c33679a2cdd2f9df22",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
