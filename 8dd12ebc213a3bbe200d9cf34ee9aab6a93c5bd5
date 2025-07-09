@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "b0587a2e_dd9b03b2",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2025-07-09T01:32:05Z",
+      "side": 1,
+      "message": "Not sure how this was missed. Dennis confirmed that it fixed touch for him.",
+      "revId": "8dd12ebc213a3bbe200d9cf34ee9aab6a93c5bd5",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
