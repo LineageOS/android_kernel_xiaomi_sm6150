@@ -169,19 +169,39 @@ static int is_full_zero(const void *s1, size_t len)
 
 #endif
 #else
+static const char zero_page[PAGE_SIZE] = { 0 };
+
+static int is_full_zero_page(const void *s1, size_t len)
+{
+	size_t i;
+
+	for (i = 0; i < len; i += PAGE_SIZE) {
+		void *s = (void *)s1 + i;
+
+		if (memcmp(s, zero_page, PAGE_SIZE))
+			return false;
+	}
+
+	return true;
+}
+
 static int is_full_zero(const void *s1, size_t len)
 {
 	const unsigned long *src = s1;
-	int i;
+	size_t i;
 
-	len /= sizeof(*src);
+	if (likely(len == PAGE_SIZE)) {
+		return is_full_zero_page(s1, len);
+	} else {
+		len /= sizeof(*src);
 
-	for (i = 0; i < len; i++) {
-		if (src[i])
-			return 0;
+		for (i = 0; i < len; i++) {
+			if (src[i])
+				return false;
+		}
+
+		return true;
 	}
-
-	return 1;
 }
 #endif
 
@@ -202,8 +222,13 @@ static struct sradix_tree_node *slot_tree_node_alloc(void)
 {
 	struct slot_tree_node *p;
 
-	p = kmem_cache_zalloc(slot_tree_node_cachep, GFP_KERNEL |
-			      __GFP_NORETRY | __GFP_NOWARN);
+	p = kmem_cache_zalloc(slot_tree_node_cachep, 
+						 GFP_KERNEL | __GFP_NORETRY | __GFP_NOWARN);
+
+	if (!p) {
+		p = kmem_cache_zalloc(slot_tree_node_cachep, GFP_KERNEL);
+	}
+
 	if (!p)
 		return NULL;
 
@@ -523,9 +548,9 @@ static unsigned int uksm_sleep_saved;
 /* Max percentage of cpu utilization ksmd can take to scan in one batch */
 static unsigned int uksm_max_cpu_percentage;
 
-static int uksm_cpu_governor;
+static int uksm_cpu_governor = CONFIG_UKSM_CPU_GOVERNOR;
 
-static char *uksm_cpu_governor_str[4] = { "full", "medium", "low", "quiet" };
+static char *uksm_cpu_governor_str[5] = { "full", "medium", "low", "quiet", "android" };
 
 struct uksm_cpu_preset_s {
 	int cpu_ratio[SCAN_LADDER_SIZE];
@@ -533,11 +558,82 @@ struct uksm_cpu_preset_s {
 	unsigned int max_cpu; /* percentage */
 };
 
-struct uksm_cpu_preset_s uksm_cpu_preset[4] = {
-	{ {20, 40, -2500, -10000}, {1000, 500, 200, 50}, 95},
-	{ {20, 30, -2500, -10000}, {1000, 500, 400, 100}, 50},
-	{ {10, 20, -5000, -10000}, {1500, 1000, 1000, 250}, 20},
-	{ {10, 20, 40, 75}, {2000, 1000, 1000, 1000}, 1},
+struct uksm_cpu_preset_s uksm_cpu_preset[5] = {
+	{
+		{
+			20,
+			40,
+			-TIME_RATIO_SCALE / 4,
+			-TIME_RATIO_SCALE
+		},
+		{
+			1000,
+			500,
+			200,
+			50
+		},
+		95
+	},
+	{
+		{
+			20,
+			30,
+			-TIME_RATIO_SCALE / 4,
+			-TIME_RATIO_SCALE
+		},
+		{
+			1000,
+			500,
+			400,
+			100
+		},
+		50
+	},
+	{
+		{
+			10,
+			20,
+			-TIME_RATIO_SCALE / 2,
+			-TIME_RATIO_SCALE
+		},
+		{
+			1500,
+			1000,
+			1000,
+			250
+		},
+		20
+	},
+	{
+		{
+			10,
+			20,
+			40,
+			75
+		},
+		{
+			2000,
+			1000,
+			1000,
+			1000
+		},
+		1
+	},
+	{
+		{
+			100,
+			-TIME_RATIO_SCALE / 10,
+			-TIME_RATIO_SCALE / 2,
+			-TIME_RATIO_SCALE
+		},
+		{
+			1000,
+			500,
+			200,
+			50
+		},
+		90
+	},
 };
 
 /* The default value for uksm_ema_page_time if it's not initialized */
@@ -621,7 +717,7 @@ static unsigned long stable_tree_index;
 static u32 *random_nums;
 
 /* The hash strength */
-static unsigned long hash_strength = HASH_STRENGTH_FULL >> 4;
+static unsigned long hash_strength = HASH_STRENGTH_FULL >> 6;
 
 /* The delta value each time the hash strength increases or decreases */
 static unsigned long hash_strength_delta;
@@ -3538,8 +3634,19 @@ static int advance_current_scan(struct scan_rung *rung)
 
 static inline void rung_rm_slot(struct vma_slot *slot)
 {
-	struct scan_rung *rung = slot->rung;
+	struct scan_rung *rung;
 	struct sradix_tree_root *root;
+
+	if (!slot) {
+		pr_err("UKSM: rung_rm_slot: slot is NULL\n");
+		return;
+	}
+
+	rung = slot->rung;
+	if (!rung) {
+		pr_err("UKSM: rung_rm_slot: slot->rung is NULL for slot %p\n", slot);
+		return;
+	}
 
 	if (rung->current_scan == slot)
 		advance_current_scan(rung);
@@ -4659,8 +4766,8 @@ rm_slot:
 		if (expected_jiffies > uksm_sleep_real)
 			uksm_sleep_real = expected_jiffies;
 
-		/* We have a 1 second up bound for responsiveness. */
-		if (jiffies_to_msecs(uksm_sleep_real) > MSEC_PER_SEC)
+		/* We have a 60 second up bound for responsiveness. */
+		if (jiffies_to_msecs(uksm_sleep_real) > MSEC_PER_SEC * 60)
 			uksm_sleep_real = msecs_to_jiffies(1000);
 	}
 
@@ -4865,8 +4972,8 @@ static ssize_t max_cpu_percentage_store(struct kobject *kobj,
 
 	if (max_cpu_percentage == 100)
 		max_cpu_percentage = 99;
-	else if (max_cpu_percentage < 10)
-		max_cpu_percentage = 10;
+	else if (max_cpu_percentage < 1)
+		max_cpu_percentage = 1;
 
 	uksm_max_cpu_percentage = max_cpu_percentage;
 
@@ -4888,7 +4995,7 @@ static ssize_t sleep_millisecs_store(struct kobject *kobj,
 	int err;
 
 	err = kstrtoul(buf, 10, &msecs);
-	if (err || msecs > MSEC_PER_SEC)
+	if (err || msecs > MSEC_PER_SEC * 60)
 		return -EINVAL;
 
 	uksm_sleep_jiffies = msecs_to_jiffies(msecs);
@@ -5458,26 +5565,25 @@ static void __init uksm_slab_free(void)
 int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 		unsigned long end, int advice, unsigned long *vm_flags)
 {
-	int err;
-
-	switch (advice) {
-	case MADV_MERGEABLE:
+	/* force ignore the advice */
+	if (*vm_flags & (VM_MERGEABLE | VM_SHARED  | VM_MAYSHARE   |
+			 VM_PFNMAP    | VM_IO      | VM_DONTEXPAND |
+			 VM_HUGETLB | VM_MIXEDMAP))
 		return 0;		/* just ignore the advice */
 
-	case MADV_UNMERGEABLE:
-		if (!(*vm_flags & VM_MERGEABLE) || !uksm_flags_can_scan(*vm_flags))
-			return 0;		/* just ignore the advice */
+	if (vma_is_dax(vma))
+		return 0;
 
-		if (vma->anon_vma) {
-			err = unmerge_uksm_pages(vma, start, end);
-			if (err)
-				return err;
-		}
+#ifdef VM_SAO
+	if (*vm_flags & VM_SAO)
+		return 0;
+#endif
+#ifdef VM_SPARC_ADI
+	if (*vm_flags & VM_SPARC_ADI)
+		return 0;
+#endif
 
-		uksm_remove_vma(vma);
-		*vm_flags &= ~VM_MERGEABLE;
-		break;
-	}
+	*vm_flags |= VM_MERGEABLE;
 
 	return 0;
 }
@@ -5518,7 +5624,7 @@ static int __init uksm_init(void)
 	struct task_struct *uksm_thread;
 	int err;
 
-	uksm_sleep_jiffies = msecs_to_jiffies(100);
+	uksm_sleep_jiffies = msecs_to_jiffies(CONFIG_UKSM_SLEEP_MS);
 	uksm_sleep_saved = uksm_sleep_jiffies;
 
 	slot_tree_init();

@@ -362,6 +362,25 @@ config KSM_LEGACY
 	The legacy KSM implementation from Red Hat.
 endchoice
 
+if UKSM
+
+config UKSM_CPU_GOVERNOR
+	int "Ultra-KSM default CPU governor"
+	range 0 4
+	help
+	The UKSM default CPU governor.
+	0: full
+	1: medium
+	2: low
+	3: quiet
+	4: android
+
+config UKSM_SLEEP_MS
+	int "Ultra-KSM default sleep millisecs"
+	range 8 60000
+
+endif
+
 config DEFAULT_MMAP_MIN_ADDR
         int "Low address space to protect from user allocation"
 	depends on MMU
