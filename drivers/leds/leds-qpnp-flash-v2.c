@@ -191,7 +191,7 @@
 #define	MAX_IRES_LEVELS					4
 #define	FLASH_BST_PWM_OVRHD_MIN_UV			300000
 #define	FLASH_BST_PWM_OVRHD_MAX_UV			600000
-#define DEFAULT_TORCH_STRENGTH 50
+#define DEFAULT_TORCH_STRENGTH 				225
 
 /* notifier call chain for flash-led irqs */
 static ATOMIC_NOTIFIER_HEAD(irq_notifier_list);
