@@ -2,7 +2,7 @@
 VERSION = 4
 PATCHLEVEL = 14
 SUBLEVEL = 356
-EXTRAVERSION = -openela-rc1
+EXTRAVERSION = -mike-rc1
 NAME = Petit Gorille
 
 # *DOCUMENTATION*
