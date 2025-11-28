@@ -892,6 +892,26 @@ ifdef CONFIG_DEBUG_SECTION_MISMATCH
 KBUILD_CFLAGS += $(call cc-option, -fno-inline-functions-called-once)
 endif
 
+# Polly
+ifdef CONFIG_LLVM_POLLY
+KBUILD_CFLAGS	+= -fvectorize -funroll-loops -mllvm -polly \
+                    -mllvm -polly-run-inliner \
+                    -mllvm -polly-ast-use-context \
+                    -mllvm -polly-detect-keep-going \
+                    -mllvm -polly-invariant-load-hoisting \
+                    -mllvm -polly-vectorizer=stripmine \
+                    -mllvm -polly-loopfusion-greedy=1 \
+                    -mllvm -polly-reschedule=1 \
+                    -mllvm -polly-postopts=1 \
+                    -mllvm -polly-num-threads=0 \
+                    -mllvm -polly-omp-backend=LLVM \
+                    -mllvm -polly-scheduling=dynamic \
+                    -mllvm -polly-scheduling-chunksize=1
+endif
+ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
+POLLY_FLAGS	+= -mllvm -polly-run-dce
+endif
+
 ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
 KBUILD_CFLAGS	+= $(call cc-option,-ffunction-sections,)
 KBUILD_CFLAGS	+= $(call cc-option,-fdata-sections,)
