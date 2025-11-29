@@ -9,6 +9,10 @@ echo "========================================"
 echo "  Build Kernel - Xiaomi Toco (LineageOS)"
 echo "========================================"
 
+# Verificar clang
+echo "[*] Usando clang del sistema:"
+clang --version | head -1
+
 # Fix CUDA/clang
 if grep -q "grep ' version '" scripts/mkcompile_h; then
     sed -i "s/grep ' version '/grep -m1 ' version '/" scripts/mkcompile_h
