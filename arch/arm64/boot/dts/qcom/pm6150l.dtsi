@@ -198,6 +198,7 @@
 					  "all-ramp-up-done-irq";
 			qcom,hdrm-auto-mode;
 			qcom,short-circuit-det;
+			qcom,torch-realtime-brightness-control;
 			qcom,open-circuit-det;
 			qcom,vph-droop-det;
 			qcom,thermal-derate-en;
