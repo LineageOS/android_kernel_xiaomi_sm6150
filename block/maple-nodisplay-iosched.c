@@ -385,15 +385,15 @@ static struct elv_fs_entry maple_attrs[] = {
 };
 
 static struct elevator_type iosched_maple = {
-	.ops = {
-		.elevator_merge_req_fn		= maple_merged_requests,
-		.elevator_dispatch_fn		= maple_dispatch_requests,
-		.elevator_add_req_fn		= maple_add_request,
-		.elevator_former_req_fn		= maple_former_request,
-		.elevator_latter_req_fn		= maple_latter_request,
-		.elevator_init_fn		= maple_init_queue,
-		.elevator_exit_fn		= maple_exit_queue,
-	},
+	.ops.sq = {
+        .elevator_merge_req_fn      = maple_merged_requests,
+        .elevator_dispatch_fn       = maple_dispatch_requests,
+        .elevator_add_req_fn        = maple_add_request,
+        .elevator_former_req_fn     = maple_former_request,
+        .elevator_latter_req_fn     = maple_latter_request,
+        .elevator_init_fn           = maple_init_queue,
+        .elevator_exit_fn           = maple_exit_queue,
+    },
 
 	.elevator_attrs = maple_attrs,
 	.elevator_name = "maple",
