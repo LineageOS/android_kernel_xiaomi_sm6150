@@ -692,7 +692,7 @@ void device_add_disk(struct device *parent, struct gendisk *disk)
 	/* Force optimal I/O settings for performance */
 	if (disk->queue) {
 		/* Set I/O scheduler to noop for better latency */
-		elevator_change(disk->queue, "noop");
+		elv_iosched_store(disk->queue, "noop", 4);
 		/* Increase read ahead for better throughput */
 		disk->queue->backing_dev_info->ra_pages = (256 * 1024) / PAGE_SIZE;
 	}
