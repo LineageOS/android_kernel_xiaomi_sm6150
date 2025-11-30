@@ -689,6 +689,14 @@ void device_add_disk(struct device *parent, struct gendisk *disk)
 	 */
 	WARN_ON_ONCE(!blk_get_queue(disk->queue));
 
+	/* Force optimal I/O settings for performance */
+	if (disk->queue) {
+		/* Set I/O scheduler to noop for better latency */
+		elevator_change(disk->queue, "noop");
+		/* Increase read ahead for better throughput */
+		disk->queue->backing_dev_info->ra_pages = (256 * 1024) / PAGE_SIZE;
+	}
+
 	if (!retval) {
 		retval = sysfs_create_link(&disk_to_dev(disk)->kobj,
 				&bdi->dev->kobj, "bdi");
