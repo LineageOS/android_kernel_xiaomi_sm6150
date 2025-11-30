@@ -996,7 +996,7 @@ static void adreno_of_get_initial_pwrlevel(struct adreno_device *adreno_dev,
 	of_property_read_u32(node, "qcom,initial-pwrlevel", &init_level);
 
 	if (init_level < 0 || init_level > pwr->num_pwrlevels)
-		init_level = 1;
+		init_level = 3; /* Start at 430MHz for better app launch responsiveness */
 
 	pwr->active_pwrlevel = init_level;
 	pwr->default_pwrlevel = init_level;
