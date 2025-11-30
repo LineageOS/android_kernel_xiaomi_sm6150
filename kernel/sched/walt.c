@@ -127,6 +127,10 @@ __read_mostly unsigned int sysctl_sched_cpu_high_irqload = (10 * NSEC_PER_MSEC);
 unsigned int sysctl_sched_walt_rotate_big_tasks;
 unsigned int walt_rotation_enabled;
 
+/* Additional WALT tunables */
+unsigned int sysctl_sched_conservative_pl = 1;
+unsigned int sysctl_sched_many_wakeup_threshold = 4;
+
 /*
  * sched_window_stats_policy and sched_ravg_hist_size have a 'sysctl' copy
  * associated with them. This is required for atomic update of those variables
