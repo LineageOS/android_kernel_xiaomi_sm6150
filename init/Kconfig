@@ -1242,7 +1242,6 @@ config CC_OPTIMIZE_FOR_PERFORMANCE
 
 config LLVM_POLLY
 	bool "Enable LLVM's polyhedral loop optimizer (Polly)"
-	default y
 	help
 	  This option enables LLVM's polyhedral loop optimizer known as Polly.
 	  Polly is able to optimize various loops throughout the kernel for
