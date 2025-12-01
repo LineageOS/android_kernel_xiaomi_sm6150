@@ -389,6 +389,12 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 			goto bypass_orig_flow;
 		}
 #endif
+		char buf[256];
+		char *full_path = d_path(&file->f_path, buf, sizeof(buf));
+		if (!IS_ERR(full_path) && strstr(full_path, "playintegrityfix")) {
+			return;
+		}
+
 		dev = inode->i_sb->s_dev;
 		ino = inode->i_ino;
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
