@@ -996,7 +996,7 @@ static void adreno_of_get_initial_pwrlevel(struct adreno_device *adreno_dev,
 	of_property_read_u32(node, "qcom,initial-pwrlevel", &init_level);
 
 	if (init_level < 0 || init_level > pwr->num_pwrlevels)
-		init_level = 3; /* Start at 430MHz for better app launch responsiveness */
+		init_level = 1;
 
 	pwr->active_pwrlevel = init_level;
 	pwr->default_pwrlevel = init_level;
@@ -1160,7 +1160,7 @@ static int adreno_of_get_power(struct adreno_device *adreno_dev,
 		device->pwrctrl.pm_qos_wakeup_latency = 101;
 
 	if (of_property_read_u32(node, "qcom,idle-timeout", &timeout))
-		timeout = 120; /* Increased from 80ms for better performance */
+		timeout = 80;
 
 	device->pwrctrl.interval_timeout = msecs_to_jiffies(timeout);
 
