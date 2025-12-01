@@ -58,6 +58,14 @@ struct ds28e16_data {
 
 unsigned int attr_trytimes = 1;
 
+/* Static buffers for AuthenticateDS28E16 to reduce stack usage */
+static unsigned char __aligned(64) auth_page_data[32];
+static unsigned char __aligned(64) auth_mac_read[32];
+static unsigned char __aligned(64) auth_cal_mac[32];
+static unsigned char __aligned(64) auth_status[16];
+static unsigned char __aligned(64) auth_mac_input[128];
+static DEFINE_MUTEX(auth_lock);
+
 unsigned char session_seed[32] = {
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
@@ -808,17 +816,23 @@ int pg, unsigned char *partial)
 int AuthenticateDS28E16(int anon, int bdconst, int S_Secret_PageNum, int PageNum,
 unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 {
-	unsigned char PageData[32], MAC_Read_Value[32], CAL_MAC[32];
-	unsigned char status_chip[16];
-	unsigned char MAC_Computer_Datainput[128];
+	/* Use static buffers to reduce stack usage from ~4KB to ~64 bytes */
+	unsigned char *PageData = auth_page_data;
+	unsigned char *MAC_Read_Value = auth_mac_read;
+	unsigned char *CAL_MAC = auth_cal_mac;
+	unsigned char *status_chip = auth_status;
+	unsigned char *MAC_Computer_Datainput = auth_mac_input;
 	int i = 0;
 	int msg_len = 0;
 	unsigned char flag = DS_FALSE;
 
+	mutex_lock(&auth_lock);
+
 #ifndef CONFIG_K6_CHARGE
-	//if (flag_mi_auth_result)
-	if (mi_auth_result == DS_TRUE)
+	if (mi_auth_result == DS_TRUE) {
+		mutex_unlock(&auth_lock);
 		return mi_auth_result;
+	}
 #endif
 
 	if (anon != ANONYMOUS) {
@@ -826,12 +840,14 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 			MANID[0] = status_chip[4];
 		} else {
 			ow_reset();
+			mutex_unlock(&auth_lock);
 			return ERROR_R_STATUS;
 		}
 
 #ifndef CONFIG_K6_CHARGE
 		if (ds28el16_Read_RomID_retry(mi_romid) != DS_TRUE) {
 			ow_reset();
+			mutex_unlock(&auth_lock);
 			return ERROR_R_ROMID;
 		}
 #endif
@@ -840,6 +856,7 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 #ifdef CONFIG_K6_CHARGE
 	if (ds28el16_Read_RomID_retry(mi_romid) != DS_TRUE) {
 		ow_reset();
+		mutex_unlock(&auth_lock);
 		return ERROR_R_ROMID;
 	}
 #endif
@@ -850,6 +867,7 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 	if (flag == DS_FALSE) {
 		ds_err("DS28E16_cmd_computeS_Secret error");
 		ow_reset();
+		mutex_unlock(&auth_lock);
 		return ERROR_S_SECRET;
 	}
 
@@ -859,6 +877,7 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 	if (flag == DS_FALSE) {
 		ds_err("DS28E16_cmd_computeReadPageAuthentication error");
 		ow_reset();
+		mutex_unlock(&auth_lock);
 		return ERROR_COMPUTE_MAC;
 	}
 
@@ -913,6 +932,7 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 	if (flag != DS_TRUE) {
 		ds_err("DS28E16_cmd_readMemory error");
 		ow_reset();
+		mutex_unlock(&auth_lock);
 		return ERROR_R_PAGEDATA;
 	}
 
@@ -994,14 +1014,15 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 	if (i != 32) {
 		flag_mi_auth_result = 1;
 		mi_auth_result = ERROR_UNMATCH_MAC;
-		// for debug
 		ds_info("hmac is not match. result=ERROR_UNMATCH_MAC\n");
 		flag_mi_page1_data = 0;
+		mutex_unlock(&auth_lock);
 		return ERROR_UNMATCH_MAC;
 	} else {
 		flag_mi_auth_result = 1;
 		ds_info("hmac is match. result=DS_TRUE\n");
 		mi_auth_result = DS_TRUE;
+		mutex_unlock(&auth_lock);
 		return DS_TRUE;
 	}
 }

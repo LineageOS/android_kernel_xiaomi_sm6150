@@ -34,8 +34,16 @@
 //  SHA3_HMAC - HMAC using SHA3-256
 #include "ucl_sha3.h"
 #include <linux/string.h>
+#include <linux/slab.h>
 #define SHA3_256_HMAC
 #include "sha384_software.h"
+
+/* Static buffers to avoid stack overflow and kmalloc overhead */
+static unsigned char __aligned(64) hmac_thash[256];
+static unsigned char __aligned(64) hmac_tmac[256];
+static unsigned char __aligned(64) hmac_cat_thash[1024];
+static unsigned char __aligned(64) hmac_cat_final[1024];
+static DEFINE_SPINLOCK(hmac_lock);
 
 //---------------------------------------------------------------------------
 /// Compute HMAC using SHA3-256.
@@ -61,49 +69,42 @@
 ///
 int sha3_256_hmac(unsigned char *key, int key_len, unsigned char *message, int msg_len, unsigned char *mac)
 {
+	const int blocksize = 136;
+	const int hashsize = 32;
+	unsigned long flags;
 	int i;
-	unsigned char thash[256];
-	unsigned char tmac[256];
-	unsigned char cat_input_thash[1024];
-	unsigned char cat_input_final[1024];
+	unsigned char opad[136] __aligned(8);
+	unsigned char ipad[136] __aligned(8);
 
-	int blocksize = 136;
-	int hashsize = 32;
-	unsigned char opad[136];
-	unsigned char ipad[136];
+	/* Early validation - no lock needed */
+	if (unlikely(key_len > blocksize || msg_len > 512))
+		return 0;
+
+	/* Use static buffers with spinlock for thread safety */
+	spin_lock_irqsave(&hmac_lock, flags);
 
 	memset(opad, 0x5C, blocksize);
 	memset(ipad, 0x36, blocksize);
 
-	//  Check to see if key is larger then blocksize
-	if (key_len > blocksize)
-		return 0;  // Not supported
-
-	// check for blocks too big
-	if (msg_len > 512)
-		return 0;
-
-	// Loop through bytes of ipad/opad and XOR with key
+	/* XOR ipad/opad with key */
 	for (i = 0; i < key_len; i++) {
-		// XOR ipad with key
 		ipad[i] ^= key[i];
-		// XOR opad with key
 		opad[i] ^= key[i];
 	}
 
-	// thash = hash(ipad || message)
-	memcpy(cat_input_thash, ipad, blocksize);
-	memcpy(&cat_input_thash[blocksize], message, msg_len);
+	/* thash = hash(ipad || message) */
+	memcpy(hmac_cat_thash, ipad, blocksize);
+	memcpy(hmac_cat_thash + blocksize, message, msg_len);
+	ucl_sha3_256(hmac_thash, hmac_cat_thash, blocksize + msg_len);
 
-	ucl_sha3_256(thash, cat_input_thash, blocksize + msg_len);
+	/* mac = hash(opad || thash) */
+	memcpy(hmac_cat_final, opad, blocksize);
+	memcpy(hmac_cat_final + blocksize, hmac_thash, hashsize);
+	ucl_sha3_256(hmac_tmac, hmac_cat_final, blocksize + hashsize);
 
-	// return hash(opad || thash)
-	memcpy(cat_input_final, opad, blocksize);
-	memcpy(&cat_input_final[blocksize], thash, hashsize);
+	memcpy(mac, hmac_tmac, hashsize);
 
-	ucl_sha3_256(tmac, cat_input_final, blocksize + hashsize);
-
-	memcpy(mac, tmac, hashsize);
+	spin_unlock_irqrestore(&hmac_lock, flags);
 
 	return 1;
 }
