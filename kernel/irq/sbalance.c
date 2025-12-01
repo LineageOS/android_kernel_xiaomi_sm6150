@@ -363,9 +363,9 @@ static void sbalance_wait(long poll_jiffies)
 	 * Open code freezable_schedule_timeout_interruptible() in order to
 	 * make the timer deferrable, so that it doesn't kick CPUs out of idle.
 	 */
-	__set_current_state(TASK_IDLE | TASK_FREEZABLE);
+	__set_current_state(TASK_IDLE);
 	timer.task = current;
-	timer_setup_on_stack(&timer.timer, process_timeout, TIMER_DEFERRABLE);
+	setup_timer_on_stack(&timer.timer, (void (*)(unsigned long))process_timeout, (unsigned long)&timer.timer);
 	timer.timer.expires = jiffies + poll_jiffies;
 	add_timer(&timer.timer);
 	schedule();
