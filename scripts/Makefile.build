@@ -636,13 +636,13 @@ $($(subst $(obj)/,,$(@:.o=-objs)))    \
 $($(subst $(obj)/,,$(@:.o=-y)))       \
 $($(subst $(obj)/,,$(@:.o=-m)))), $^)
 
-cmd_link_multi-link = $(LD) $(ld_flags) -r -o $@ $(link_multi_deps) $(cmd_secanalysis)
+# Use response file to avoid "argument list too long" error with large modules
+cmd_link_multi-link = $(file >$@.rsp,$(link_multi_deps)) $(file >$@.deps,$(link_multi_deps)) $(LD) $(ld_flags) -r -o $@ @$@.rsp $(cmd_secanalysis); rm -f $@.rsp
 
 ifdef CONFIG_THIN_ARCHIVES
   quiet_cmd_link_multi-y = AR      $@
-  cmd_link_multi-y = $(update_lto_symversions) \
-	rm -f $@; $(AR) rcSTP$(KBUILD_ARFLAGS) $@ $(link_multi_deps) \
-	$(update_lto_symtable)
+  # Use response file for AR to avoid "argument list too long" error
+  cmd_link_multi-y = $(update_lto_symversions) $(file >$@.rsp,$(link_multi_deps)) $(file >$@.deps,$(link_multi_deps)) rm -f $@; $(AR) rcSTP$(KBUILD_ARFLAGS) $@ @$@.rsp; rm -f $@.rsp $(update_lto_symtable)
 else
   quiet_cmd_link_multi-y = LD      $@
   cmd_link_multi-y = $(cmd_link_multi-link)
@@ -662,7 +662,7 @@ $(multi-used-y): FORCE
 
 $(multi-used-m): FORCE
 	$(call if_changed,link_multi-m)
-	@{ echo $(@:.o=.ko); echo $(link_multi_deps); \
+	@{ echo $(@:.o=.ko); cat $@.deps 2>/dev/null || echo $(link_multi_deps); \
 	   $(cmd_undef_syms); } > $(MODVERDIR)/$(@F:.o=.mod)
 
 $(call multi_depend, $(multi-used-y), .o, -objs -y)
