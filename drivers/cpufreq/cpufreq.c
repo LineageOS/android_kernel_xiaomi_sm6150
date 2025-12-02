@@ -32,7 +32,6 @@
 #include <linux/tick.h>
 #include <linux/sched/topology.h>
 #include <linux/sched/sysctl.h>
-#include <linux/battery_saver.h>
 
 #include <trace/events/power.h>
 
@@ -768,9 +767,7 @@ static ssize_t show_cpuinfo_cur_freq(struct cpufreq_policy *policy,
  */
 static ssize_t show_scaling_governor(struct cpufreq_policy *policy, char *buf)
 {
-	if (is_battery_saver_on())
-		return sprintf(buf, "powersave\n");
-	else if (policy->policy == CPUFREQ_POLICY_POWERSAVE)
+	if (policy->policy == CPUFREQ_POLICY_POWERSAVE)
 		return sprintf(buf, "powersave\n");
 	else if (policy->policy == CPUFREQ_POLICY_PERFORMANCE)
 		return sprintf(buf, "performance\n");
