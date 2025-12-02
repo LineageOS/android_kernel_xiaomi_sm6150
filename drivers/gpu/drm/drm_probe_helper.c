@@ -675,7 +675,7 @@ out:
 		drm_kms_helper_hotplug_event(dev);
 
 	if (repoll)
-		queue_delayed_work(system_power_efficient_wq, DRM_OUTPUT_POLL_PERIOD);
+		queue_delayed_work(system_power_efficient_wq, delayed_work, DRM_OUTPUT_POLL_PERIOD);
 }
 
 /**
