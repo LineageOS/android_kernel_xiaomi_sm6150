@@ -435,6 +435,18 @@ config LEDS_QPNP_FLASH_V2
           several independent channels.  It also supports various over current
           and over temperature mitigation features.
 
+config LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
+	bool "Realtime torch brightness control"
+	depends on LEDS_QPNP_FLASH_V2
+	default n
+	help
+	  Enable realtime torch brightness control via sysfs. When enabled,
+	  a custom_brightness attribute is exposed for each torch LED that
+	  allows changing brightness without turning the torch off and on.
+	  Write a value in mA (1-500) to apply immediately.
+
+	  The brightness resets to default (225mA) when torch is turned off.
+
 config LEDS_QPNP_HAPTICS
 	tristate "Haptics support for QPNP PMIC"
 	depends on LEDS_CLASS && MFD_SPMI_PMIC

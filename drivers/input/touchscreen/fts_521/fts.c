@@ -4419,7 +4419,7 @@ static irqreturn_t fts_event_handler(int irq, void *ts_info)
 	event_dispatch_handler_t event_handler;
 
 	if (info->tp_pm_suspend) {
-		logError(1, "%s device in suspend, schedue to work", tag);
+		/* Debug removed for latency optimization */
 		pm_wakeup_event(info->dev, 0);
 		if (!work_pending(&info->sleep_work)) {
 			pm_stay_awake(info->dev);
@@ -7705,6 +7705,10 @@ static int fts_probe(struct spi_device *client)
 	xiaomitouch_register_modedata(&xiaomi_touch_interfaces);
 	fts_read_touchmode_data();
 	fts_init_touchmode_data();
+
+	/* Enable palm sensor by default for better touch rejection */
+	fts_palm_sensor_write(1);
+	MI_TOUCH_LOGI(1, "%s %s: Palm sensor enabled by default\n", tag, __func__);
 #endif
 #ifndef FW_UPDATE_ON_PROBE
 	queue_delayed_work(info->fwu_workqueue, &info->fwu_work,

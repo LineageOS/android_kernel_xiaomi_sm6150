@@ -34,6 +34,10 @@
 #include <linux/log2.h>
 #include "leds.h"
 
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
+#include "leds-qpnp-flash-v2-torch-brightness.h"
+#endif
+
 #define	FLASH_LED_REG_LED_STATUS1(base)		(base + 0x08)
 
 #define	FLASH_LED_REG_LED_STATUS2(base)		(base + 0x09)
@@ -191,7 +195,12 @@
 #define	MAX_IRES_LEVELS					4
 #define	FLASH_BST_PWM_OVRHD_MIN_UV			300000
 #define	FLASH_BST_PWM_OVRHD_MAX_UV			600000
-#define DEFAULT_TORCH_STRENGTH 				225
+
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
+#define DEFAULT_TORCH_STRENGTH				TORCH_BRIGHTNESS_DEFAULT
+#else
+#define DEFAULT_TORCH_STRENGTH				225
+#endif
 
 /* notifier call chain for flash-led irqs */
 static ATOMIC_NOTIFIER_HEAD(irq_notifier_list);
@@ -247,7 +256,9 @@ struct flash_node_data {
 	u8				current_reg_val;
 	u8				strobe_ctrl;
 	u8				strobe_sel;
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
 	int				custom_brightness;
+#endif
 	enum flash_led_type		type;
 	bool				led_on;
 };
@@ -1261,13 +1272,17 @@ static void qpnp_flash_led_node_set(struct flash_node_data *fnode, int value)
 	fnode->ires_idx = fnode->default_ires_idx;
 	fnode->ires_ua = fnode->default_ires_ua;
 
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
 	if (fnode->type == FLASH_LED_TYPE_TORCH) {
 		if (value > 0) {
 			prgm_current_ma = fnode->custom_brightness;
 		} else {
+			/* Reset brightness to default when torch is turned off */
+			fnode->custom_brightness = DEFAULT_TORCH_STRENGTH;
 			prgm_current_ma = 0;
 		}
 	}
+#endif
 
 	prgm_current_ma = min(prgm_current_ma, fnode->max_current);
 	if (prgm_current_ma > max_ires_curr_ma_table[fnode->ires_idx]) {
@@ -1389,6 +1404,12 @@ static int qpnp_flash_led_switch_disable(struct flash_switch_data *snode)
 			return rc;
 
 		led->fnode[i].led_on = false;
+
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
+		/* Reset custom brightness to default when torch is turned off */
+		if (led->fnode[i].type == FLASH_LED_TYPE_TORCH)
+			led->fnode[i].custom_brightness = TORCH_BRIGHTNESS_DEFAULT;
+#endif
 
 		if (led->fnode[i].strobe_sel == HW_STROBE) {
 			rc = qpnp_flash_led_hw_strobe_enable(&led->fnode[i],
@@ -1867,14 +1888,23 @@ static ssize_t qpnp_flash_led_max_current_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", max_current);
 }
 
-/* Custom brightness hack */
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
+/*
+ * Realtime Torch Brightness Control
+ *
+ * Provides sysfs interface to adjust torch brightness in realtime.
+ * Changes are applied immediately to hardware without toggling LED.
+ */
 static ssize_t custom_brightness_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
+				      struct device_attribute *attr, char *buf)
 {
 	struct led_classdev *led_cdev = dev_get_drvdata(dev);
-	struct flash_node_data *fnode = container_of(led_cdev, struct flash_node_data, cdev);
-	struct qpnp_flash_led *led = dev_get_drvdata(&fnode->pdev->dev);
+	struct flash_node_data *fnode;
+	struct qpnp_flash_led *led;
 	int value;
+
+	fnode = container_of(led_cdev, struct flash_node_data, cdev);
+	led = dev_get_drvdata(&fnode->pdev->dev);
 
 	spin_lock(&led->lock);
 	value = fnode->custom_brightness;
@@ -1884,26 +1914,76 @@ static ssize_t custom_brightness_show(struct device *dev,
 }
 
 static ssize_t custom_brightness_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
+				       struct device_attribute *attr,
+				       const char *buf, size_t size)
 {
 	struct led_classdev *led_cdev = dev_get_drvdata(dev);
-	struct flash_node_data *fnode = container_of(led_cdev, struct flash_node_data, cdev);
-	struct qpnp_flash_led *led = dev_get_drvdata(&fnode->pdev->dev);
-	int value, rc;
+	struct flash_node_data *fnode;
+	struct qpnp_flash_led *led;
+	int value, rc, prgm_current_ma, i, addr_offset;
+	u8 val;
+
+	fnode = container_of(led_cdev, struct flash_node_data, cdev);
+	led = dev_get_drvdata(&fnode->pdev->dev);
 
 	rc = kstrtoint(buf, 10, &value);
 	if (rc)
 		return rc;
 
+	value = clamp(value, 0, fnode->max_current);
+
 	spin_lock(&led->lock);
 	fnode->custom_brightness = value;
-	spin_unlock(&led->lock);
 
+	/* Apply brightness to hardware in realtime */
+	if (value > 0) {
+		prgm_current_ma = value;
+
+		fnode->ires_idx = fnode->default_ires_idx;
+		fnode->ires_ua = fnode->default_ires_ua;
+
+		/* Recalculate IRES if current exceeds range */
+		if (prgm_current_ma > max_ires_curr_ma_table[fnode->ires_idx]) {
+			for (i = MAX_IRES_LEVELS - 1; i >= 0; i--) {
+				if (prgm_current_ma <= max_ires_curr_ma_table[i]) {
+					fnode->ires_idx = i;
+					fnode->ires_ua = FLASH_LED_IRES_MIN_UA +
+						(FLASH_LED_IRES_BASE - fnode->ires_idx) *
+						FLASH_LED_IRES_DIVISOR;
+					break;
+				}
+			}
+		}
+
+		fnode->current_ma = prgm_current_ma;
+		fnode->cdev.brightness = prgm_current_ma;
+		fnode->current_reg_val = get_current_reg_code(prgm_current_ma,
+							      fnode->ires_ua);
+
+		/* Write IRES register */
+		val = fnode->ires_idx << (fnode->id * 2);
+		rc = qpnp_flash_led_masked_write(led,
+						 FLASH_LED_REG_IRES(led->base),
+						 FLASH_LED_CURRENT_MASK, val);
+		if (rc < 0)
+			goto unlock;
+
+		/* Write current register */
+		addr_offset = fnode->id;
+		rc = qpnp_flash_led_masked_write(led,
+			FLASH_LED_REG_TGR_CURRENT(led->base + addr_offset),
+			FLASH_LED_CURRENT_MASK, fnode->current_reg_val);
+	}
+
+unlock:
+	spin_unlock(&led->lock);
 	return size;
 }
 
 static DEVICE_ATTR_RW(custom_brightness);
+#endif /* CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS */
 
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
 static struct attribute *torch_attrs[] = {
 	&dev_attr_custom_brightness.attr,
 	NULL,
@@ -1912,6 +1992,7 @@ static struct attribute *torch_attrs[] = {
 static const struct attribute_group torch_attr_group = {
 	.attrs = torch_attrs,
 };
+#endif /* CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS */
 
 /* sysfs attributes exported by flash_led */
 static struct device_attribute qpnp_flash_led_attrs[] = {
@@ -2028,7 +2109,9 @@ static int qpnp_flash_led_parse_each_led_dt(struct qpnp_flash_led *led,
 			fnode->type = FLASH_LED_TYPE_FLASH;
 		} else if (!strcmp(temp_string, "torch")) {
 			fnode->type = FLASH_LED_TYPE_TORCH;
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
 			fnode->custom_brightness = DEFAULT_TORCH_STRENGTH;
+#endif
 		} else {
 			pr_err("Wrong flash LED type\n");
 			return rc;
@@ -2038,8 +2121,10 @@ static int qpnp_flash_led_parse_each_led_dt(struct qpnp_flash_led *led,
 		return rc;
 	}
 
+#ifdef CONFIG_LEDS_QPNP_FLASH_V2_TORCH_BRIGHTNESS
 	if (fnode->type == FLASH_LED_TYPE_TORCH)
 		fnode->cdev.groups = (const struct attribute_group *[]) { &torch_attr_group, NULL };
+#endif
 
 	rc = of_property_read_u32(node, "qcom,id", &val);
 	if (!rc) {

@@ -3190,6 +3190,10 @@ static int goodix_ts_probe(struct platform_device *pdev)
 		xiaomi_touch_interfaces.palm_sensor_write = gtp_palm_sensor_write;
 		xiaomitouch_register_modedata(&xiaomi_touch_interfaces);
 		gtp_init_touchmode_data();
+
+		/* Enable palm sensor by default for better touch rejection */
+		gtp_palm_sensor_write(1);
+		ts_info("Palm sensor enabled by default");
 #endif
 
 	ts_info("goodix_ts_probe ok");

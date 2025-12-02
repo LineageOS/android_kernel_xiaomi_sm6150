@@ -3,7 +3,7 @@ set -e
 
 KERNEL_DIR=$(pwd)
 OUT_DIR="$KERNEL_DIR/out"
-JOBS=$(nproc)
+JOBS=36
 
 echo "========================================"
 echo "  Build Kernel - Xiaomi Toco (LineageOS)"
