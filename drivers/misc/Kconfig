@@ -602,6 +602,31 @@ config TEST_IRQ_REQUESTER
 
 	  If in doubt, say N.
 
+config AKM09970
+	tristate "AK09970 digital hall sensor support"
+	depends on I2C
+	select INPUT_POLLDEV
+	help
+	  Say Y here if you have AKM Sensortec's AK09970 magnet
+	  sensor hooked to an I2C bus.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called akm09970.
+
+
+config TI_DRV8846
+	tristate "TI step motor driver IC"
+	depends on PWM
+	help
+	  Say 'y' here to include support for the H-Bridge Stepper
+	  Motor Driver. The MISC peripheral holds the pwm and the
+	  driver provides an API to drive stepper motor.
+
+config LDO_WL2866D
+	bool  "multi ldo wl2866d"
+	---help---
+	  This option enables multi ldo wl2866d.
+
 config BATTERY_SAVER
 	bool "Battery saver mode for kernelspace"
 	default y
@@ -615,6 +640,7 @@ config BATTERY_SAVER
 	  drain battery faster, such as CPU and DDR boosting.
 
 	  If in doubt, say Y.
+>>>>>>> c7fe7aa2cecba (drivers/misc: Introduce kernelspace battery saver mode)
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
