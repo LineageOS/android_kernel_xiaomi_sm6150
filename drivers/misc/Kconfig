@@ -640,6 +640,7 @@ config BATTERY_SAVER
 	  drain battery faster, such as CPU and DDR boosting.
 
 	  If in doubt, say Y.
+>>>>>>> c7fe7aa2cecba (drivers/misc: Introduce kernelspace battery saver mode)
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
