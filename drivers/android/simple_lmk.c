@@ -433,13 +433,21 @@ static int simple_lmk_reaper_thread(void *data)
 
 void simple_lmk_mm_freed(struct mm_struct *mm)
 {
-	int i;
+	int i, victims_count;
 
 	/*
 	 * Victims are guaranteed to have MMF_OOM_SKIP set after exit_mmap()
 	 * finishes. Use this to ignore unrelated dying processes.
 	 */
 	if (!test_bit(MMF_OOM_SKIP, &mm->flags))
+		return;
+
+	/*
+	 * Fast path: check if there are any victims without taking the lock.
+	 * This avoids lock contention when LMK is not actively killing.
+	 */
+	victims_count = READ_ONCE(nr_victims);
+	if (unlikely(victims_count == 0))
 		return;
 
 	read_lock(&mm_free_lock);
@@ -451,8 +459,8 @@ void simple_lmk_mm_freed(struct mm_struct *mm)
 			 * isn't active, then clearing out the victim is done
 			 * solely for the reaper thread to avoid freed victims.
 			 */
-			victims[i].mm = NULL;
-			if (reclaim_active &&
+			WRITE_ONCE(victims[i].mm, NULL);
+			if (READ_ONCE(reclaim_active) &&
 			    atomic_inc_return_relaxed(&nr_killed) == nr_victims)
 				complete(&reclaim_done);
 			break;
