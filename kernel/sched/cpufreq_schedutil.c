@@ -993,6 +993,7 @@ static int sugov_init(struct cpufreq_policy *policy)
 				cpufreq_policy_transition_delay_us(policy);
 	tunables->hispeed_load = DEFAULT_HISPEED_LOAD;
 	tunables->hispeed_freq = 0;
+	tunables->pl = true;  /* Enable Predictive Load for BORE/WALT */
 
 	policy->governor_data = sg_policy;
 	sg_policy->tunables = tunables;
