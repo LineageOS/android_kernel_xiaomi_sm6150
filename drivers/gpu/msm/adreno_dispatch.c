@@ -32,8 +32,12 @@ static unsigned int _context_drawqueue_size = 50;
 /* Number of milliseconds to wait for the context queue to clear */
 static unsigned int _context_queue_wait = 10000;
 
-/* Number of drawobjs sent at a time from a single context */
-static unsigned int _context_drawobj_burst = 5;
+/*
+ * Number of drawobjs sent at a time from a single context.
+ * Increased from 5 to 8 to reduce dispatch overhead and improve
+ * GPU utilization by batching more commands per iteration.
+ */
+static unsigned int _context_drawobj_burst = 8;
 
 /*
  * GFT throttle parameters. If GFT recovered more than
@@ -46,15 +50,17 @@ static unsigned int _fault_throttle_burst = 3;
 
 /*
  * Maximum ringbuffer inflight for the single submitting context case - this
- * should be sufficiently high to keep the GPU loaded
+ * should be sufficiently high to keep the GPU loaded.
+ * Increased from 15 to 20 to better saturate the GPU pipeline.
  */
-static unsigned int _dispatcher_q_inflight_hi = 15;
+static unsigned int _dispatcher_q_inflight_hi = 20;
 
 /*
  * Minimum inflight for the multiple context case - this should sufficiently low
- * to allow for lower latency context switching
+ * to allow for lower latency context switching.
+ * Increased from 4 to 6 for better throughput while maintaining responsiveness.
  */
-static unsigned int _dispatcher_q_inflight_lo = 4;
+static unsigned int _dispatcher_q_inflight_lo = 6;
 
 /* Command batch timeout (in milliseconds) */
 unsigned int adreno_drawobj_timeout = 2000;
@@ -152,13 +158,16 @@ static void _track_context(struct adreno_device *adreno_dev,
  *  inflight to a high number to load up the GPU. If multiple contexts
  *  have queued drop the inflight for better context switch latency.
  *  If no contexts have queued what are you even doing here?
+ *
+ *  Optimized: Use READ_ONCE to avoid potential issues with compiler
+ *  optimizations and ensure we get a consistent value. Also uses
+ *  likely() hint since single-context is the common case for games.
  */
-
 static inline int
 _drawqueue_inflight(struct adreno_dispatcher_drawqueue *drawqueue)
 {
-	return (drawqueue->active_context_count > 1)
-		? _dispatcher_q_inflight_lo : _dispatcher_q_inflight_hi;
+	return likely(READ_ONCE(drawqueue->active_context_count) <= 1)
+		? _dispatcher_q_inflight_hi : _dispatcher_q_inflight_lo;
 }
 
 static void fault_detect_read(struct adreno_device *adreno_dev)

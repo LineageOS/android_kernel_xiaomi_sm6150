@@ -18,8 +18,14 @@
 #include <linux/msm_adreno_devfreq.h>
 #include "kgsl_pwrctrl.h"
 
-/* devfreq governor call window in usec */
-#define KGSL_GOVERNOR_CALL_INTERVAL 10000
+/*
+ * Adaptive governor call intervals in usec.
+ * Under load: faster polling for better responsiveness.
+ * Idle: slower polling to save CPU cycles.
+ */
+#define KGSL_GOVERNOR_CALL_INTERVAL		10000	/* Default 10ms */
+#define KGSL_GOVERNOR_CALL_INTERVAL_FAST	5000	/* 5ms under load */
+#define KGSL_GOVERNOR_CALL_INTERVAL_SLOW	20000	/* 20ms when idle */
 
 /* Power events to be tracked with history */
 #define KGSL_PWREVENT_STATE	0

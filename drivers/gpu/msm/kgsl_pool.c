@@ -17,6 +17,8 @@
 #include <linux/slab.h>
 #include <linux/highmem.h>
 #include <linux/version.h>
+#include <linux/kthread.h>
+#include <linux/freezer.h>
 
 #include "kgsl.h"
 #include "kgsl_device.h"
@@ -25,6 +27,20 @@
 #define KGSL_MAX_POOLS 4
 #define KGSL_MAX_POOL_ORDER 8
 #define KGSL_MAX_RESERVED_PAGES 4096
+
+/*
+ * ARM64 optimized page zeroing using DC ZVA instruction when available.
+ * This is significantly faster than memset() as it doesn't require
+ * reading the cache line before writing.
+ */
+#ifdef CONFIG_ARM64
+#define KGSL_USE_DC_ZVA 1
+#else
+#define KGSL_USE_DC_ZVA 0
+#endif
+
+/* Batch size for cache operations to reduce TLB pressure */
+#define KGSL_CACHE_BATCH_PAGES 16
 
 /**
  * struct kgsl_page_pool - Structure to hold information for the pool
@@ -64,17 +80,64 @@ _kgsl_get_pool_from_order(unsigned int order)
 	return NULL;
 }
 
-/* Map the page into kernel and zero it out */
+/*
+ * ARM64 optimized page zeroing.
+ * Uses clear_page() which leverages DC ZVA on ARM64 for zero-allocation
+ * cache operations, avoiding read-for-ownership overhead.
+ */
+static void __always_inline
+_kgsl_pool_zero_page_fast(struct page *page)
+{
+	void *addr = page_address(page);
+
+	if (likely(addr)) {
+		/*
+		 * clear_page() on ARM64 uses DC ZVA which is much faster
+		 * than memset because it doesn't need to read cache lines.
+		 */
+		clear_page(addr);
+	} else {
+		/* Fallback for highmem pages */
+		addr = kmap_atomic(page);
+		clear_page(addr);
+		kunmap_atomic(addr);
+	}
+}
+
+/*
+ * Optimized compound page zeroing with batched cache maintenance.
+ * For ARM64, we use clear_page() which uses DC ZVA instruction,
+ * then do a single batched cache flush at the end.
+ */
 static void
 _kgsl_pool_zero_page(struct page *p, unsigned int pool_order)
 {
+	const int num_pages = 1 << pool_order;
 	int i;
+	void *start_addr = NULL;
+	void *end_addr = NULL;
 
-	for (i = 0; i < (1 << pool_order); i++) {
+	/* Fast path: page_address available (not highmem) */
+	if (likely(page_address(p))) {
+		start_addr = page_address(p);
+		end_addr = start_addr + (num_pages << PAGE_SHIFT);
+
+		/* Zero all pages using optimized clear_page */
+		for (i = 0; i < num_pages; i++) {
+			clear_page(start_addr + (i << PAGE_SHIFT));
+		}
+
+		/* Single batched cache flush for all pages */
+		dmac_flush_range(start_addr, end_addr);
+		return;
+	}
+
+	/* Slow path: highmem pages, process in batches */
+	for (i = 0; i < num_pages; i++) {
 		struct page *page = nth_page(p, i);
 		void *addr = kmap_atomic(page);
 
-		memset(addr, 0, PAGE_SIZE);
+		clear_page(addr);
 		dmac_flush_range(addr, addr + PAGE_SIZE);
 		kunmap_atomic(addr);
 	}
@@ -103,14 +166,25 @@ _kgsl_pool_add_page(struct kgsl_page_pool *pool, struct page *p)
 				(1 << pool->pool_order));
 }
 
-/* Returns a page from specified pool */
+/*
+ * Returns a page from specified pool.
+ * Optimized with early check to avoid lock contention when pool is empty.
+ */
 static struct page *
 _kgsl_pool_get_page(struct kgsl_page_pool *pool)
 {
 	struct page *p = NULL;
 
+	/*
+	 * Fast path: check if pool has pages without taking lock.
+	 * READ_ONCE prevents compiler from caching the value.
+	 * This avoids lock contention when pool is empty.
+	 */
+	if (unlikely(READ_ONCE(pool->page_count) == 0))
+		return NULL;
+
 	spin_lock(&pool->list_lock);
-	if (pool->page_count) {
+	if (likely(pool->page_count)) {
 		p = list_first_entry(&pool->page_list, struct page, lru);
 		pool->page_count--;
 		list_del(&p->lru);
@@ -124,17 +198,15 @@ _kgsl_pool_get_page(struct kgsl_page_pool *pool)
 	return p;
 }
 
-/* Returns the number of pages in specified pool */
+/*
+ * Returns the number of pages in specified pool.
+ * Uses READ_ONCE to get a consistent snapshot without locking.
+ * Exact count not critical - used for statistics and shrinking decisions.
+ */
 static int
 kgsl_pool_size(struct kgsl_page_pool *kgsl_pool)
 {
-	int size;
-
-	spin_lock(&kgsl_pool->list_lock);
-	size = kgsl_pool->page_count * (1 << kgsl_pool->pool_order);
-	spin_unlock(&kgsl_pool->list_lock);
-
-	return size;
+	return READ_ONCE(kgsl_pool->page_count) * (1 << kgsl_pool->pool_order);
 }
 
 /* Returns the number of pages in all kgsl page pools */

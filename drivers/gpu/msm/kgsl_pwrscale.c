@@ -174,16 +174,38 @@ void kgsl_pwrscale_update_stats(struct kgsl_device *device)
 }
 EXPORT_SYMBOL(kgsl_pwrscale_update_stats);
 
+/*
+ * Get adaptive governor interval based on GPU activity.
+ * Faster polling under load, slower when idle.
+ */
+static inline unsigned int kgsl_get_governor_interval(struct kgsl_device *device)
+{
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+
+	/*
+	 * If GPU is at max frequency, use fast polling for better
+	 * responsiveness to load changes. At min freq, use slow
+	 * polling to save CPU cycles.
+	 */
+	if (pwr->active_pwrlevel <= pwr->max_pwrlevel + 1)
+		return KGSL_GOVERNOR_CALL_INTERVAL_FAST;
+	else if (pwr->active_pwrlevel >= pwr->min_pwrlevel - 1)
+		return KGSL_GOVERNOR_CALL_INTERVAL_SLOW;
+
+	return KGSL_GOVERNOR_CALL_INTERVAL;
+}
+
 /**
  * kgsl_pwrscale_update() - update device busy statistics
  * @device: The device
  *
  * If enough time has passed schedule the next call to devfreq
- * get_dev_status.
+ * get_dev_status. Uses adaptive polling interval.
  */
 void kgsl_pwrscale_update(struct kgsl_device *device)
 {
 	ktime_t t;
+	unsigned int interval;
 
 	if (WARN_ON(!mutex_is_locked(&device->mutex)))
 		return;
@@ -195,8 +217,9 @@ void kgsl_pwrscale_update(struct kgsl_device *device)
 	if (ktime_compare(t, device->pwrscale.next_governor_call) < 0)
 		return;
 
-	device->pwrscale.next_governor_call = ktime_add_us(t,
-			KGSL_GOVERNOR_CALL_INTERVAL);
+	/* Use adaptive interval based on current GPU activity */
+	interval = kgsl_get_governor_interval(device);
+	device->pwrscale.next_governor_call = ktime_add_us(t, interval);
 
 	/* to call update_devfreq() from a kernel thread */
 	if (device->state != KGSL_STATE_SLUMBER)
@@ -668,20 +691,27 @@ EXPORT_SYMBOL(kgsl_devfreq_get_dev_status);
  * @freq: see devfreq.h
  * @flags: see devfreq.h
  *
- * This function expects the device mutex to be unlocked.
+ * Optimized: Reading frequency doesn't require full device mutex.
+ * The active_pwrlevel is atomically updated and frequency table is static.
  */
 int kgsl_devfreq_get_cur_freq(struct device *dev, unsigned long *freq)
 {
 	struct kgsl_device *device = dev_get_drvdata(dev);
+	struct kgsl_pwrctrl *pwr;
+	int level;
 
 	if (device == NULL)
 		return -ENODEV;
 	if (freq == NULL)
 		return -EINVAL;
 
-	mutex_lock(&device->mutex);
-	*freq = kgsl_pwrctrl_active_freq(&device->pwrctrl);
-	mutex_unlock(&device->mutex);
+	pwr = &device->pwrctrl;
+	/*
+	 * Use READ_ONCE to get consistent value without mutex.
+	 * active_pwrlevel is updated atomically and freq table is immutable.
+	 */
+	level = READ_ONCE(pwr->active_pwrlevel);
+	*freq = pwr->pwrlevels[level].gpu_freq;
 
 	return 0;
 }
