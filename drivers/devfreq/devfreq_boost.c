@@ -18,10 +18,14 @@ enum {
 	MAX_BOOST
 };
 
+/* Screen-off power optimization: force minimum frequency when display off */
+#define SCREEN_OFF_MIN_FREQ_DELAY_MS	500	/* Delay before forcing min freq */
+
 struct boost_dev {
 	struct devfreq *df;
 	struct delayed_work input_unboost;
 	struct delayed_work max_unboost;
+	struct delayed_work screen_off_min;	/* Delayed work for screen-off optimization */
 	wait_queue_head_t boost_waitq;
 	atomic_long_t max_boost_expires;
 	unsigned long boost_freq;
@@ -35,6 +39,7 @@ struct df_boost_drv {
 
 static void devfreq_input_unboost(struct work_struct *work);
 static void devfreq_max_unboost(struct work_struct *work);
+static void devfreq_screen_off_min(struct work_struct *work);
 
 #define BOOST_DEV_INIT(b, dev, freq) .devices[dev] = {				\
 	.input_unboost =							\
@@ -43,6 +48,9 @@ static void devfreq_max_unboost(struct work_struct *work);
 	.max_unboost =								\
 		__DELAYED_WORK_INITIALIZER((b).devices[dev].max_unboost,	\
 					   devfreq_max_unboost, 0),		\
+	.screen_off_min =							\
+		__DELAYED_WORK_INITIALIZER((b).devices[dev].screen_off_min,	\
+					   devfreq_screen_off_min, 0),		\
 	.boost_waitq =								\
 		__WAIT_QUEUE_HEAD_INITIALIZER((b).devices[dev].boost_waitq),	\
 	.boost_freq = freq							\
@@ -137,6 +145,29 @@ static void devfreq_max_unboost(struct work_struct *work)
 	wake_up(&b->boost_waitq);
 }
 
+/*
+ * Screen-off power optimization: Force DDR to minimum frequency
+ * after a short delay when screen turns off. This saves significant
+ * power during screen-off scenarios (pocket, sleep, etc.)
+ */
+static void devfreq_screen_off_min(struct work_struct *work)
+{
+	struct boost_dev *b = container_of(to_delayed_work(work), typeof(*b),
+					   screen_off_min);
+	struct devfreq *df = READ_ONCE(b->df);
+
+	/* Only apply if still in screen-off state */
+	if (!df || !test_bit(SCREEN_OFF, &b->state))
+		return;
+
+	mutex_lock(&df->lock);
+	/* Force minimum frequency to save power during screen-off */
+	df->min_freq = df->profile->freq_table[0];
+	df->max_freq = df->profile->freq_table[0];
+	update_devfreq(df);
+	mutex_unlock(&df->lock);
+}
+
 static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 {
 	struct devfreq *df = b->df;
@@ -198,14 +229,32 @@ static int msm_drm_notifier_cb(struct notifier_block *nb,
 	/* Boost when the screen turns on and unboost when it turns off */
 	for (i = 0; i < DEVFREQ_MAX; i++) {
 		struct boost_dev *b = &d->devices[i];
+		struct devfreq *df = READ_ONCE(b->df);
 
 		if (*blank == MSM_DRM_BLANK_UNBLANK) {
+			/* Screen ON: Cancel screen-off optimization and restore */
+			cancel_delayed_work_sync(&b->screen_off_min);
 			clear_bit(SCREEN_OFF, &b->state);
+
+			/* Restore min/max frequency limits */
+			if (df) {
+				mutex_lock(&df->lock);
+				df->min_freq = df->profile->freq_table[0];
+				df->max_freq = df->profile->freq_table[df->profile->max_state - 1];
+				update_devfreq(df);
+				mutex_unlock(&df->lock);
+			}
+
 			__devfreq_boost_kick_max(b,
 				CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS);
 		} else {
+			/* Screen OFF: Schedule aggressive power optimization */
 			set_bit(SCREEN_OFF, &b->state);
 			wake_up(&b->boost_waitq);
+
+			/* Schedule delayed work to force min freq after settling */
+			mod_delayed_work(system_unbound_wq, &b->screen_off_min,
+				msecs_to_jiffies(SCREEN_OFF_MIN_FREQ_DELAY_MS));
 		}
 	}
 

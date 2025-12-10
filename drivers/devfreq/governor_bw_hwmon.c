@@ -34,6 +34,12 @@
 #include "governor_bw_hwmon.h"
 
 #define NUM_MBPS_ZONES		10
+#define TREND_HISTORY_SIZE	5
+#define DECAY_RATE_MIN		50
+#define DECAY_RATE_MAX		95
+#define TREND_UP_THRESHOLD	15	/* % increase to detect uptrend */
+#define TREND_DOWN_THRESHOLD	10	/* % decrease to detect downtrend */
+
 struct hwmon_node {
 	unsigned int guard_band_mbps;
 	unsigned int decay_rate;
@@ -76,6 +82,18 @@ struct hwmon_node {
 	struct devfreq_governor *gov;
 	struct attribute_group *attr_grp;
 	struct mutex mon_lock;
+
+	/* Adaptive decay rate tracking */
+	unsigned int adaptive_decay_rate;
+	unsigned int reversal_count;
+	unsigned int stable_count;
+	unsigned long last_direction;	/* 0=down, 1=up */
+
+	/* Trend-based prediction */
+	unsigned long mbps_history[TREND_HISTORY_SIZE];
+	unsigned int history_idx;
+	unsigned int history_count;
+	int trend_slope;		/* positive=rising, negative=falling */
 };
 
 #define UP_WAKE 1
@@ -311,6 +329,101 @@ unsigned long to_mbps_zone(struct hwmon_node *node, unsigned long mbps)
 
 #define MIN_MBPS	500UL
 #define HIST_PEAK_TOL	60
+
+/*
+ * Update trend history and calculate slope for prediction
+ * Returns: slope as percentage change (positive=rising, negative=falling)
+ */
+static int update_trend_prediction(struct hwmon_node *node, unsigned long mbps)
+{
+	unsigned long oldest, newest, avg_old, avg_new;
+	int i, half = TREND_HISTORY_SIZE / 2;
+
+	/* Store current measurement */
+	node->mbps_history[node->history_idx] = mbps;
+	node->history_idx = (node->history_idx + 1) % TREND_HISTORY_SIZE;
+	if (node->history_count < TREND_HISTORY_SIZE)
+		node->history_count++;
+
+	/* Need at least half the buffer to calculate trend */
+	if (node->history_count < half + 1)
+		return 0;
+
+	/* Calculate average of older half vs newer half */
+	avg_old = 0;
+	avg_new = 0;
+	for (i = 0; i < half; i++) {
+		int old_idx = (node->history_idx + i) % TREND_HISTORY_SIZE;
+		int new_idx = (node->history_idx + half + i) % TREND_HISTORY_SIZE;
+		avg_old += node->mbps_history[old_idx];
+		avg_new += node->mbps_history[new_idx];
+	}
+	avg_old /= half;
+	avg_new /= half;
+
+	/* Calculate slope as percentage change */
+	if (avg_old == 0)
+		return 0;
+
+	node->trend_slope = ((int)(avg_new - avg_old) * 100) / (int)avg_old;
+	return node->trend_slope;
+}
+
+/*
+ * Adaptive decay rate adjustment based on workload stability
+ * - Increase decay (more smoothing) during stable phases
+ * - Decrease decay (more reactive) during rapid changes
+ */
+static void update_adaptive_decay(struct hwmon_node *node, unsigned long new_bw)
+{
+	unsigned long cur_direction = (new_bw > node->prev_ab) ? 1 : 0;
+
+	/* Detect direction reversal */
+	if (node->prev_ab > 0 && cur_direction != node->last_direction) {
+		node->reversal_count++;
+		node->stable_count = 0;
+
+		/* Too many reversals = reduce decay for faster response */
+		if (node->reversal_count >= 3) {
+			if (node->adaptive_decay_rate > DECAY_RATE_MIN + 5)
+				node->adaptive_decay_rate -= 5;
+			node->reversal_count = 0;
+		}
+	} else {
+		node->stable_count++;
+		node->reversal_count = 0;
+
+		/* Stable workload = increase decay for smoother transitions */
+		if (node->stable_count >= 5) {
+			if (node->adaptive_decay_rate < DECAY_RATE_MAX - 2)
+				node->adaptive_decay_rate += 2;
+			node->stable_count = 0;
+		}
+	}
+
+	node->last_direction = cur_direction;
+}
+
+/*
+ * Apply trend-based boost to requested bandwidth
+ * Pre-scales bandwidth when rising trend is detected
+ */
+static unsigned long apply_trend_boost(struct hwmon_node *node,
+				       unsigned long req_mbps)
+{
+	unsigned long boosted = req_mbps;
+
+	/* Rising trend detected - pre-scale bandwidth */
+	if (node->trend_slope > TREND_UP_THRESHOLD) {
+		/* Boost by half the trend percentage, capped at 30% */
+		unsigned int boost_pct = min_t(unsigned int,
+					       node->trend_slope / 2, 30);
+		boosted = req_mbps + (req_mbps * boost_pct) / 100;
+	}
+
+	return boosted;
+}
+
 static unsigned long get_bw_and_set_irq(struct hwmon_node *node,
 					unsigned long *freq, unsigned long *ab)
 {
@@ -460,15 +573,25 @@ static unsigned long get_bw_and_set_irq(struct hwmon_node *node,
 
 	spin_unlock_irqrestore(&irq_lock, flags);
 
+	/* Update trend prediction with current measurement */
+	update_trend_prediction(node, meas_mbps);
+
+	/* Apply trend-based boost if rising workload detected */
+	req_mbps = apply_trend_boost(node, req_mbps);
+
 	adj_mbps = req_mbps + node->guard_band_mbps;
 
 	if (adj_mbps > node->prev_ab) {
 		new_bw = adj_mbps;
 	} else {
-		new_bw = adj_mbps * node->decay_rate
-			+ node->prev_ab * (100 - node->decay_rate);
+		/* Use adaptive decay rate instead of fixed decay */
+		new_bw = adj_mbps * node->adaptive_decay_rate
+			+ node->prev_ab * (100 - node->adaptive_decay_rate);
 		new_bw /= 100;
 	}
+
+	/* Update adaptive decay based on workload stability */
+	update_adaptive_decay(node, new_bw);
 
 	node->prev_ab = new_bw;
 	if (ab && node->use_ab)
@@ -965,12 +1088,12 @@ int register_bw_hwmon(struct device *dev, struct bw_hwmon *hwmon)
 	}
 
 	node->guard_band_mbps = 100;
-	node->decay_rate = 90;
+	node->decay_rate = 75;
 	node->io_percent = 16;
 	node->bw_step = 190;
-	node->sample_ms = 50;
+	node->sample_ms = 30;
 	node->up_scale = 0;
-	node->up_thres = 10;
+	node->up_thres = 20;
 	node->down_thres = 0;
 	node->down_count = 3;
 	node->hist_memory = 0;
@@ -980,6 +1103,17 @@ int register_bw_hwmon(struct device *dev, struct bw_hwmon *hwmon)
 	node->use_ab = 1;
 	node->mbps_zones[0] = 0;
 	node->hw = hwmon;
+
+	/* Initialize adaptive decay rate */
+	node->adaptive_decay_rate = 75;
+	node->reversal_count = 0;
+	node->stable_count = 0;
+	node->last_direction = 0;
+
+	/* Initialize trend prediction */
+	node->history_idx = 0;
+	node->history_count = 0;
+	node->trend_slope = 0;
 
 	mutex_init(&node->mon_lock);
 	mutex_lock(&list_lock);

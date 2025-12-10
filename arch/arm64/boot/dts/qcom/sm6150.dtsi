@@ -2878,7 +2878,8 @@
 			< 1017600 MHZ_TO_MBPS( 451, 4) >,
 			< 1209600 MHZ_TO_MBPS( 547, 4) >,
 			< 1516800 MHZ_TO_MBPS( 768, 4) >,
-			< 1804800 MHZ_TO_MBPS(1017, 4) >;
+			< 1708800 MHZ_TO_MBPS(1017, 4) >,
+			< 1804800 MHZ_TO_MBPS(1353, 4) >;
 	};
 
 	cpu6_llcc_ddr_lat: qcom,cpu6-llcc-ddr-lat {
