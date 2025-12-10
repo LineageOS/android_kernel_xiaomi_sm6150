@@ -792,7 +792,7 @@ extern void untrack_pfn_moved(struct vm_area_struct *vma);
 #ifdef CONFIG_UKSM
 static inline int is_uksm_zero_pfn(unsigned long pfn)
 {
-	extern unsigned long uksm_zero_pfn;
+	extern unsigned long uksm_zero_pfn __read_mostly;
 	return pfn == uksm_zero_pfn;
 }
 #else
