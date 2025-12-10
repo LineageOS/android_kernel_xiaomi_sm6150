@@ -158,6 +158,8 @@ static int cpu_boost_thread(void *data)
 	struct boost_drv *b = data;
 	unsigned long old_state = 0;
 
+	/* Run on performance cores for lowest latency */
+	set_cpus_allowed_ptr(current, cpu_perf_mask);
 	sched_setscheduler_nocheck(current, SCHED_FIFO, &sched_max_rt_prio);
 
 	while (1) {
