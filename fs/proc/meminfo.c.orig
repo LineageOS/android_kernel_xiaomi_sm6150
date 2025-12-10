@@ -122,10 +122,6 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #endif
 	show_val_kb(m, "PageTables:     ",
 		    global_zone_page_state(NR_PAGETABLE));
-#ifdef CONFIG_UKSM
-	show_val_kb(m, "KsmZeroPages:     ",
-		    global_zone_page_state(NR_UKSM_ZERO_PAGES));
-#endif
 #ifdef CONFIG_QUICKLIST
 	show_val_kb(m, "Quicklists:     ", quicklist_total_size());
 #endif
