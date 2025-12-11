@@ -45,6 +45,22 @@ static DEFINE_SPINLOCK(suspend_lock);
  * This helps with heavy apps like Maps/WebView.
  */
 #define CEILING			30000
+
+/*
+ * Predictive frequency scaling - maintains history of GPU load
+ * to detect trends and predict upcoming load spikes/drops.
+ * This reduces frame drops by scaling frequency BEFORE load hits.
+ */
+#define LOAD_HISTORY_SIZE	8
+#define TREND_UP_THRESHOLD	15	/* % increase to detect uptrend */
+#define TREND_DOWN_THRESHOLD	10	/* % decrease to detect downtrend */
+
+static struct {
+	unsigned int samples[LOAD_HISTORY_SIZE];
+	unsigned int head;
+	unsigned int count;
+	int trend;	/* -1 = down, 0 = stable, 1 = up */
+} load_history;
 #define TZ_RESET_ID		0x3
 #define TZ_UPDATE_ID		0x4
 #define TZ_INIT_ID		0x6
@@ -81,6 +97,79 @@ u64 suspend_time_ms(void)
 	/* Update the suspend_start sample again */
 	suspend_start = suspend_sampling_time;
 	return time_diff;
+}
+
+/*
+ * Predictive frequency scaling functions
+ * Analyzes GPU load history to predict upcoming load changes
+ */
+static void update_load_history(unsigned int load_pct)
+{
+	unsigned int oldest, newest, avg_old, avg_new;
+	int i, mid;
+
+	/* Add new sample */
+	load_history.samples[load_history.head] = load_pct;
+	load_history.head = (load_history.head + 1) % LOAD_HISTORY_SIZE;
+	if (load_history.count < LOAD_HISTORY_SIZE)
+		load_history.count++;
+
+	/* Need at least 4 samples to detect trend */
+	if (load_history.count < 4) {
+		load_history.trend = 0;
+		return;
+	}
+
+	/*
+	 * Compare average of older half vs newer half
+	 * This detects if load is trending up or down
+	 */
+	mid = load_history.count / 2;
+	avg_old = 0;
+	avg_new = 0;
+
+	for (i = 0; i < mid; i++) {
+		oldest = (load_history.head + LOAD_HISTORY_SIZE - load_history.count + i)
+			 % LOAD_HISTORY_SIZE;
+		newest = (load_history.head + LOAD_HISTORY_SIZE - mid + i)
+			 % LOAD_HISTORY_SIZE;
+		avg_old += load_history.samples[oldest];
+		avg_new += load_history.samples[newest];
+	}
+	avg_old /= mid;
+	avg_new /= mid;
+
+	/* Detect trend direction */
+	if (avg_new > avg_old + TREND_UP_THRESHOLD)
+		load_history.trend = 1;	/* Rising load */
+	else if (avg_old > avg_new + TREND_DOWN_THRESHOLD)
+		load_history.trend = -1;	/* Falling load */
+	else
+		load_history.trend = 0;	/* Stable */
+}
+
+/*
+ * Apply predictive boost based on detected trend
+ * Returns adjustment to frequency level (-1, 0, +1)
+ */
+static int get_predictive_adjustment(int current_level, int max_level)
+{
+	/* If load is rising, preemptively increase frequency */
+	if (load_history.trend > 0 && current_level > 0)
+		return -1;	/* Go up one level (lower index = higher freq) */
+
+	/* If load is falling and we're not at minimum, allow faster drop */
+	if (load_history.trend < 0 && current_level < max_level - 1)
+		return 1;	/* Go down one level */
+
+	return 0;	/* No predictive adjustment */
+}
+
+static void reset_load_history(void)
+{
+	load_history.head = 0;
+	load_history.count = 0;
+	load_history.trend = 0;
 }
 
 static ssize_t adrenoboost_show(struct device *dev,
@@ -372,6 +461,8 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq)
 	int val, level = 0;
 	unsigned int scm_data[4];
 	int context_count = 0;
+	unsigned int load_pct;
+	int predictive_adj;
 
 	/* keeps stats.private_data == NULL   */
 	result = devfreq->profile->get_dev_status(devfreq->dev.parent, &stats);
@@ -382,6 +473,16 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq)
 
 	*freq = stats.current_frequency;
 	priv->bin.total_time += stats.total_time;
+
+	/*
+	 * Calculate and record load percentage for predictive scaling.
+	 * This allows us to detect load trends before they cause frame drops.
+	 */
+	if (stats.total_time > 0) {
+		load_pct = (stats.busy_time * 100) / stats.total_time;
+		update_load_history(load_pct);
+	}
+
 	/*
 	 * Scale busy time up based on adrenoboost parameter.
 	 * Formula: busy_time * (1 + adrenoboost * 2)
@@ -447,6 +548,18 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq)
 		level = min_t(int, level, devfreq->profile->max_state - 1);
 	}
 
+	/*
+	 * Apply predictive adjustment based on load trend.
+	 * If load is rising, preemptively bump frequency before frame drops.
+	 * If load is falling, allow faster frequency reduction for power savings.
+	 */
+	predictive_adj = get_predictive_adjustment(level, devfreq->profile->max_state);
+	if (predictive_adj) {
+		level += predictive_adj;
+		level = max(level, 0);
+		level = min_t(int, level, devfreq->profile->max_state - 1);
+	}
+
 	*freq = devfreq->profile->freq_table[level];
 	return 0;
 }
@@ -492,6 +605,9 @@ static int tz_start(struct devfreq *devfreq)
 
 	for (i = 0; adreno_tz_attr_list[i] != NULL; i++)
 		device_create_file(&devfreq->dev, adreno_tz_attr_list[i]);
+
+	/* Reset predictive scaling history on governor start */
+	reset_load_history();
 
 	return 0;
 }
