@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2018-2019 Sultan Alsawaf <sultan@kerneltoast.com>.
+ * Screen-off max freq limiting added for power optimization.
  */
 
 #define pr_fmt(fmt) "cpu_input_boost: " fmt
@@ -18,8 +19,28 @@
 #include <uapi/linux/sched/types.h>
 #endif
 
+/*
+ * Screen-off power optimization: Limit max frequency when display is off.
+ * This prevents the CPU from ramping up due to background tasks, wakelocks,
+ * or predictive load algorithms when the screen is off.
+ */
+#define SCREEN_OFF_LIMIT_DELAY_MS	500
+
+/*
+ * Screen-off max frequencies - using actual OPP table values.
+ * LP cluster:   300000, 576000, 768000, 1017600...
+ * Perf cluster: 300000, 652800, 806400, 979200...
+ */
+#define SCREEN_OFF_MAX_FREQ_LP		768000U		/* 768 MHz - low power */
+#define SCREEN_OFF_MAX_FREQ_PERF	979200U		/* 979 MHz - ~44% of max */
+
+/*
+ * State bits - ordered by frequency of access for better branch prediction.
+ * SCREEN_OFF is checked most frequently in hot paths.
+ */
 enum {
-	SCREEN_OFF,
+	SCREEN_OFF = 0,
+	SCREEN_OFF_LIMIT_ACTIVE,
 	INPUT_BOOST,
 	MAX_BOOST
 };
@@ -27,6 +48,7 @@ enum {
 struct boost_drv {
 	struct delayed_work input_unboost;
 	struct delayed_work max_unboost;
+	struct delayed_work screen_off_limit;
 	struct notifier_block cpu_notif;
 	struct notifier_block msm_drm_notif;
 	wait_queue_head_t boost_waitq;
@@ -36,12 +58,15 @@ struct boost_drv {
 
 static void input_unboost_worker(struct work_struct *work);
 static void max_unboost_worker(struct work_struct *work);
+static void screen_off_limit_worker(struct work_struct *work);
 
 static struct boost_drv boost_drv_g __read_mostly = {
 	.input_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.input_unboost,
 						    input_unboost_worker, 0),
 	.max_unboost = __DELAYED_WORK_INITIALIZER(boost_drv_g.max_unboost,
 						  max_unboost_worker, 0),
+	.screen_off_limit = __DELAYED_WORK_INITIALIZER(boost_drv_g.screen_off_limit,
+						       screen_off_limit_worker, 0),
 	.boost_waitq = __WAIT_QUEUE_HEAD_INITIALIZER(boost_drv_g.boost_waitq)
 };
 
@@ -67,6 +92,21 @@ static unsigned int get_max_boost_freq(struct cpufreq_policy *policy)
 		freq = CONFIG_MAX_BOOST_FREQ_PERF;
 
 	return min(freq, policy->max);
+}
+
+/*
+ * Get the maximum frequency allowed during screen-off state.
+ * This caps how high the CPU can go when display is off to save power.
+ * Inlined for hot path performance - called from notifier callback.
+ */
+static __always_inline unsigned int get_screen_off_max_freq(
+		struct cpufreq_policy *policy)
+{
+	const unsigned int freq = cpumask_test_cpu(policy->cpu, cpu_lp_mask) ?
+				  SCREEN_OFF_MAX_FREQ_LP : SCREEN_OFF_MAX_FREQ_PERF;
+
+	/* Ensure we don't go below min or above actual max */
+	return clamp(freq, policy->cpuinfo.min_freq, policy->cpuinfo.max_freq);
 }
 
 static void update_online_cpu_policy(void)
@@ -152,6 +192,23 @@ static void max_unboost_worker(struct work_struct *work)
 	wake_up(&b->boost_waitq);
 }
 
+/*
+ * Screen-off frequency limit worker: After a delay, activate aggressive
+ * frequency limiting to ensure CPU reaches minimum frequencies during
+ * extended screen-off periods (sleep, pocket, etc.)
+ */
+static void screen_off_limit_worker(struct work_struct *work)
+{
+	struct boost_drv *b = container_of(to_delayed_work(work),
+					   typeof(*b), screen_off_limit);
+
+	/* Only apply if still in screen-off state (likely since we just woke) */
+	if (likely(test_bit(SCREEN_OFF, &b->state))) {
+		set_bit(SCREEN_OFF_LIMIT_ACTIVE, &b->state);
+		wake_up(&b->boost_waitq);
+	}
+}
+
 static int cpu_boost_thread(void *data)
 {
 	static const struct sched_param sched_max_rt_prio = {
@@ -187,18 +244,31 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 {
 	struct boost_drv *b = container_of(nb, typeof(*b), cpu_notif);
 	struct cpufreq_policy *policy = data;
+	unsigned long state;
 
-	if (action != CPUFREQ_ADJUST)
+	if (unlikely(action != CPUFREQ_ADJUST))
 		return NOTIFY_OK;
 
-	/* Unboost when the screen is off */
-	if (test_bit(SCREEN_OFF, &b->state)) {
+	/* Cache state to avoid multiple volatile reads */
+	state = READ_ONCE(b->state);
+
+	/* Screen-off power optimization: limit both min AND max frequency */
+	if (state & BIT(SCREEN_OFF)) {
 		policy->min = policy->cpuinfo.min_freq;
+
+		/*
+		 * After delay, also limit max frequency to prevent CPU from
+		 * ramping up due to background tasks or predictive algorithms.
+		 * This is the key fix for the 576MHz overnight issue.
+		 */
+		if (state & BIT(SCREEN_OFF_LIMIT_ACTIVE))
+			policy->max = get_screen_off_max_freq(policy);
+
 		return NOTIFY_OK;
 	}
 
 	/* Boost CPU to max frequency for max boost */
-	if (test_bit(MAX_BOOST, &b->state)) {
+	if (unlikely(state & BIT(MAX_BOOST))) {
 		policy->min = get_max_boost_freq(policy);
 		return NOTIFY_OK;
 	}
@@ -207,7 +277,7 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	 * Boost to policy->max if the boost frequency is higher. When
 	 * unboosting, set policy->min to the absolute min freq for the CPU.
 	 */
-	if (test_bit(INPUT_BOOST, &b->state))
+	if (state & BIT(INPUT_BOOST))
 		policy->min = get_input_boost_freq(policy);
 	else
 		policy->min = policy->cpuinfo.min_freq;
@@ -219,8 +289,7 @@ static int msm_drm_notifier_cb(struct notifier_block *nb, unsigned long action,
 			  void *data)
 {
 	struct boost_drv *b = container_of(nb, typeof(*b), msm_drm_notif);
-	struct msm_drm_notifier *evdata = data;
-	int *blank = evdata->data;
+	int *blank = ((struct msm_drm_notifier *)data)->data;
 
 	/* Parse framebuffer blank events as soon as they occur */
 	if (action != MSM_DRM_EARLY_EVENT_BLANK)
@@ -228,11 +297,23 @@ static int msm_drm_notifier_cb(struct notifier_block *nb, unsigned long action,
 
 	/* Boost when the screen turns on and unboost when it turns off */
 	if (*blank == MSM_DRM_BLANK_UNBLANK) {
+		/* Screen ON: Cancel screen-off limit and restore full range */
+		cancel_delayed_work_sync(&b->screen_off_limit);
+		clear_bit(SCREEN_OFF_LIMIT_ACTIVE, &b->state);
 		clear_bit(SCREEN_OFF, &b->state);
 		__cpu_input_boost_kick_max(b, CONFIG_WAKE_BOOST_DURATION_MS);
 	} else {
+		/* Screen OFF: Set state and schedule aggressive limiting */
 		set_bit(SCREEN_OFF, &b->state);
 		wake_up(&b->boost_waitq);
+
+		/*
+		 * Schedule delayed work to activate max freq limiting.
+		 * The delay allows brief wakeups (notifications, alarms)
+		 * to complete at normal frequencies before limiting kicks in.
+		 */
+		mod_delayed_work(system_unbound_wq, &b->screen_off_limit,
+				 msecs_to_jiffies(SCREEN_OFF_LIMIT_DELAY_MS));
 	}
 
 	return NOTIFY_OK;
