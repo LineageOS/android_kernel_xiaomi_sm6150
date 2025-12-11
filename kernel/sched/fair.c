@@ -189,13 +189,16 @@ unsigned int sysctl_sched_cfs_bandwidth_slice		= 5000UL;
 #endif
 
 #ifdef CONFIG_SCHED_BORE
-uint __read_mostly sched_burst_exclude_kthreads = 1;
-uint __read_mostly sched_burst_smoothness_long  = 1;
-uint __read_mostly sched_burst_smoothness_short = 1;
-uint __read_mostly sched_burst_fork_atavistic   = 0;
-uint __read_mostly sched_burst_penalty_offset   = 22;
-uint __read_mostly sched_burst_penalty_scale    = 1280;
-uint __read_mostly sched_burst_cache_lifetime   = 60000000;
+uint __read_mostly sched_bore                      = 1;
+uint __read_mostly sched_burst_exclude_kthreads    = 1;
+uint __read_mostly sched_burst_smoothness_long     = 1;
+uint __read_mostly sched_burst_smoothness_short    = 0;
+uint __read_mostly sched_burst_fork_atavistic      = 2;
+uint __read_mostly sched_burst_parity_threshold    = 2;
+uint __read_mostly sched_burst_penalty_offset      = 24;
+uint __read_mostly sched_burst_penalty_scale       = 1280;
+uint __read_mostly sched_burst_cache_stop_count    = 64;
+uint __read_mostly sched_burst_cache_lifetime      = 75000000;
 #endif
 
 /*
@@ -942,21 +945,22 @@ static void update_tg_load_avg(struct cfs_rq *cfs_rq, int force)
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_SCHED_BORE
-#define MAX_BURST_PENALTY (39U <<2)
+#define MAX_BURST_PENALTY ((u8)39)
+
 static inline u32 log2plus1_u64_u32f8(u64 v) {
 	u32 msb = fls64(v);
 	s32 excess_bits = msb - 9;
-    u32 fractional = (0 <= excess_bits)? v >> excess_bits: v << -excess_bits;
+	u32 fractional = (0 <= excess_bits) ? v >> excess_bits : v << -excess_bits;
 	return msb << 8 | fractional;
 }
 
-static inline u32 calc_burst_penalty(u64 burst_time) {
+static inline u8 calc_burst_penalty(u64 burst_time) {
 	u32 greed, tolerance, penalty, scaled_penalty;
 	greed = log2plus1_u64_u32f8(burst_time);
-	tolerance = sched_burst_penalty_offset << 8;
+	tolerance = (u32)sched_burst_penalty_offset << 8;
 	penalty = max(0, (s32)greed - (s32)tolerance);
 	scaled_penalty = penalty * sched_burst_penalty_scale >> 16;
-	return min(MAX_BURST_PENALTY, scaled_penalty);
+	return min((u8)MAX_BURST_PENALTY, (u8)scaled_penalty);
 }
 
 static inline u64 scale_slice(u64 delta, struct sched_entity *se) {
@@ -965,17 +969,27 @@ static inline u64 scale_slice(u64 delta, struct sched_entity *se) {
 
 void reweight_task(struct task_struct *p, int prio);
 
+static inline u8 effective_prio(struct task_struct *p) {
+	u8 prio = p->static_prio - MAX_RT_PRIO;
+	if (likely(sched_bore))
+		prio += p->se.burst_score;
+	return min((u8)39, prio);
+}
+
 static void update_burst_score(struct sched_entity *se) {
 	struct task_struct *p;
-	s32 prio, prev_prio, new_prio;
+	u8 prev_prio, new_prio;
+
 	if (!entity_is_task(se))
 		return;
+
 	p = task_of(se);
-	prio = p->static_prio - MAX_RT_PRIO;
-	prev_prio = min(39, prio + (s32)se->burst_score);
+	prev_prio = effective_prio(p);
+
 	if (!(p->flags & PF_KTHREAD && sched_burst_exclude_kthreads))
-		se->burst_score = se->burst_penalty >> 2;	
-	new_prio = min(39, prio + (s32)se->burst_score);
+		se->burst_score = se->burst_penalty >> 2;
+
+	new_prio = effective_prio(p);
 	if (new_prio != prev_prio)
 		reweight_task(p, new_prio);
 }
@@ -986,11 +1000,11 @@ static void update_burst_penalty(struct sched_entity *se) {
 	update_burst_score(se);
 }
 
-static inline u32 binary_smooth(u32 new, u32 old) {
-	int increment = new - old;
+static inline u8 binary_smooth(u8 new, u8 old) {
+	int increment = (int)new - (int)old;
 	return (0 <= increment) ?
-		old + ( increment >> (int)sched_burst_smoothness_long) :
-		old - (-increment >> (int)sched_burst_smoothness_short);
+		old + (increment >> sched_burst_smoothness_long) :
+		old - (-increment >> sched_burst_smoothness_short);
 }
 
 static void restart_burst(struct sched_entity *se) {
@@ -999,6 +1013,55 @@ static void restart_burst(struct sched_entity *se) {
 	se->curr_burst_penalty = 0;
 	se->burst_time = 0;
 	update_burst_score(se);
+}
+
+/*
+ * Thread group burst inheritance - averages burst penalties across
+ * all threads in the same thread group for better fork() behavior
+ */
+static inline bool group_burst_cache_expired(struct task_struct *p, u64 now) {
+	u64 expiry = p->se.group_burst_last_cached + sched_burst_cache_lifetime;
+	return now > expiry;
+}
+
+static void update_group_burst(struct task_struct *p, u64 now) {
+	struct task_struct *t;
+	u32 cnt = 0, sum = 0;
+
+	for_each_thread(p, t) {
+		if (cnt >= sched_burst_cache_stop_count)
+			break;
+		cnt++;
+		sum += t->se.burst_penalty;
+	}
+
+	p->se.group_burst = cnt ? sum / cnt : 0;
+	p->se.group_burst_cnt = cnt;
+	p->se.group_burst_last_cached = now;
+}
+
+static inline u32 inherit_burst_group(struct task_struct *p, u64 now) {
+	struct task_struct *leader = p->group_leader;
+	if (group_burst_cache_expired(leader, now))
+		update_group_burst(leader, now);
+	return leader->se.group_burst;
+}
+
+/*
+ * Burst parity check for preemption decisions
+ * Returns true if current task should yield to new task
+ */
+static inline bool burst_parity_check(struct sched_entity *curr, struct sched_entity *se) {
+	u8 curr_score, se_score;
+
+	if (!sched_bore || !sched_burst_parity_threshold)
+		return false;
+
+	curr_score = curr->burst_score;
+	se_score = se->burst_score;
+
+	/* Yield if current is significantly more "greedy" */
+	return (curr_score > se_score + sched_burst_parity_threshold);
 }
 #endif // CONFIG_SCHED_BORE
 

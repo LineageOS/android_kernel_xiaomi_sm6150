@@ -2291,8 +2291,10 @@ int wake_up_state(struct task_struct *p, unsigned int state)
 }
 
 #ifdef CONFIG_SCHED_BORE
-extern u32   sched_burst_fork_atavistic;
-extern uint sched_burst_cache_lifetime;
+extern uint  sched_burst_fork_atavistic;
+extern uint  sched_burst_cache_lifetime;
+extern uint  sched_burst_cache_stop_count;
+
 static void __init sched_init_bore(void) {
 	init_task.se.burst_time = 0;
 	init_task.se.prev_burst_penalty = 0;
@@ -2300,6 +2302,9 @@ static void __init sched_init_bore(void) {
 	init_task.se.burst_penalty = 0;
 	init_task.se.burst_score = 0;
 	init_task.se.child_burst_last_cached = 0;
+	init_task.se.group_burst = 0;
+	init_task.se.group_burst_cnt = 0;
+	init_task.se.group_burst_last_cached = 0;
 }
 
 void inline sched_fork_bore(struct task_struct *p) {
@@ -2307,6 +2312,9 @@ void inline sched_fork_bore(struct task_struct *p) {
 	p->se.curr_burst_penalty = 0;
 	p->se.burst_score = 0;
 	p->se.child_burst_last_cached = 0;
+	p->se.group_burst = 0;
+	p->se.group_burst_cnt = 0;
+	p->se.group_burst_last_cached = 0;
 }
 
 static u32 count_child_tasks(struct task_struct *p) {
@@ -2340,6 +2348,8 @@ static inline void update_child_burst_direct(struct task_struct *p, u64 now) {
 	u32 cnt = 0;
 	u32 sum = 0;
 	list_for_each_entry(child, &p->children, sibling) {
+		if (cnt >= sched_burst_cache_stop_count)
+			break;
 		if (!task_is_inheritable(child)) continue;
 		cnt++;
 		sum += child->se.burst_penalty;
@@ -6640,7 +6650,7 @@ void __init sched_init(void)
 
 #ifdef CONFIG_SCHED_BORE
 	sched_init_bore();
-	printk(KERN_INFO "BORE (Burst-Oriented Response Enhancer) CPU Scheduler modification 5.1.0 by Masahito Suzuki");
+	printk(KERN_INFO "BORE (Burst-Oriented Response Enhancer) CPU Scheduler modification 5.6.0-toco by Masahito Suzuki");
 #endif // CONFIG_SCHED_BORE
 
 	sched_clock_init();
