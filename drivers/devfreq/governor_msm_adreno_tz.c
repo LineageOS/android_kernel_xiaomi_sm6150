@@ -50,23 +50,16 @@ static DEFINE_SPINLOCK(suspend_lock);
  * Predictive frequency scaling - maintains history of GPU load
  * to detect trends and predict upcoming load spikes/drops.
  * This reduces frame drops by scaling frequency BEFORE load hits.
- *
- * Optimized for ARM:
- * - LOAD_HISTORY_SIZE must be power of 2 for fast modulo via bitmask
- * - Avoid divisions in hot path, use shifts instead
- * - Minimal branching for better pipeline utilization
  */
 #define LOAD_HISTORY_SIZE	8
-#define LOAD_HISTORY_MASK	(LOAD_HISTORY_SIZE - 1)  /* Fast modulo */
-#define LOAD_HISTORY_SHIFT	2  /* log2(LOAD_HISTORY_SIZE / 2) for avg */
-#define TREND_UP_THRESHOLD	15
-#define TREND_DOWN_THRESHOLD	10
+#define TREND_UP_THRESHOLD	15	/* % increase to detect uptrend */
+#define TREND_DOWN_THRESHOLD	10	/* % decrease to detect downtrend */
 
 static struct {
-	u8 samples[LOAD_HISTORY_SIZE];  /* 0-100%, u8 saves cache */
-	u8 head;
-	u8 count;
-	s8 trend;	/* -1 = down, 0 = stable, 1 = up */
+	unsigned int samples[LOAD_HISTORY_SIZE];
+	unsigned int head;
+	unsigned int count;
+	int trend;	/* -1 = down, 0 = stable, 1 = up */
 } load_history;
 #define TZ_RESET_ID		0x3
 #define TZ_UPDATE_ID		0x4
@@ -109,83 +102,70 @@ u64 suspend_time_ms(void)
 /*
  * Predictive frequency scaling functions
  * Analyzes GPU load history to predict upcoming load changes
- *
- * ARM optimizations applied:
- * - Bitmask instead of modulo (% is expensive on ARM, no HW divider)
- * - Shift instead of division for averaging
- * - u8 types to fit in cache line and reduce memory bandwidth
- * - Unrolled loop for 4-sample comparison (fixed size, no branching)
- * - likely/unlikely hints for branch prediction
  */
 static void update_load_history(unsigned int load_pct)
 {
-	u8 idx_old, idx_new;
-	unsigned int sum_old, sum_new;
+	unsigned int oldest, newest, avg_old, avg_new;
+	int i, mid;
 
-	/* Clamp to u8 range and add sample using bitmask (fast modulo) */
-	load_history.samples[load_history.head] = (u8)min(load_pct, 100U);
-	load_history.head = (load_history.head + 1) & LOAD_HISTORY_MASK;
-
-	if (likely(load_history.count < LOAD_HISTORY_SIZE))
+	/* Add new sample */
+	load_history.samples[load_history.head] = load_pct;
+	load_history.head = (load_history.head + 1) % LOAD_HISTORY_SIZE;
+	if (load_history.count < LOAD_HISTORY_SIZE)
 		load_history.count++;
 
-	/* Need at least 8 samples for reliable trend detection */
-	if (unlikely(load_history.count < LOAD_HISTORY_SIZE)) {
+	/* Need at least 4 samples to detect trend */
+	if (load_history.count < 4) {
 		load_history.trend = 0;
 		return;
 	}
 
 	/*
-	 * Compare sum of older 4 samples vs newer 4 samples
-	 * Using fixed indices and unrolled additions (no loop overhead)
-	 * Index calculation: head points to next write, so head-1 is newest
+	 * Compare average of older half vs newer half
+	 * This detects if load is trending up or down
 	 */
-	idx_new = (load_history.head - 1) & LOAD_HISTORY_MASK;
-	sum_new = load_history.samples[idx_new];
-	sum_new += load_history.samples[(idx_new - 1) & LOAD_HISTORY_MASK];
-	sum_new += load_history.samples[(idx_new - 2) & LOAD_HISTORY_MASK];
-	sum_new += load_history.samples[(idx_new - 3) & LOAD_HISTORY_MASK];
+	mid = load_history.count / 2;
+	avg_old = 0;
+	avg_new = 0;
 
-	idx_old = (load_history.head - 5) & LOAD_HISTORY_MASK;
-	sum_old = load_history.samples[idx_old];
-	sum_old += load_history.samples[(idx_old - 1) & LOAD_HISTORY_MASK];
-	sum_old += load_history.samples[(idx_old - 2) & LOAD_HISTORY_MASK];
-	sum_old += load_history.samples[(idx_old - 3) & LOAD_HISTORY_MASK];
+	for (i = 0; i < mid; i++) {
+		oldest = (load_history.head + LOAD_HISTORY_SIZE - load_history.count + i)
+			 % LOAD_HISTORY_SIZE;
+		newest = (load_history.head + LOAD_HISTORY_SIZE - mid + i)
+			 % LOAD_HISTORY_SIZE;
+		avg_old += load_history.samples[oldest];
+		avg_new += load_history.samples[newest];
+	}
+	avg_old /= mid;
+	avg_new /= mid;
 
-	/* Use shift for division by 4 (>> 2), then compare */
-	sum_new >>= LOAD_HISTORY_SHIFT;
-	sum_old >>= LOAD_HISTORY_SHIFT;
-
-	/* Detect trend direction with threshold */
-	if (sum_new > sum_old + TREND_UP_THRESHOLD)
-		load_history.trend = 1;
-	else if (sum_old > sum_new + TREND_DOWN_THRESHOLD)
-		load_history.trend = -1;
+	/* Detect trend direction */
+	if (avg_new > avg_old + TREND_UP_THRESHOLD)
+		load_history.trend = 1;	/* Rising load */
+	else if (avg_old > avg_new + TREND_DOWN_THRESHOLD)
+		load_history.trend = -1;	/* Falling load */
 	else
-		load_history.trend = 0;
+		load_history.trend = 0;	/* Stable */
 }
 
 /*
  * Apply predictive boost based on detected trend
  * Returns adjustment to frequency level (-1, 0, +1)
- * Branchless version for better ARM pipeline utilization
  */
-static inline int get_predictive_adjustment(int current_level, int max_level)
+static int get_predictive_adjustment(int current_level, int max_level)
 {
-	s8 trend = load_history.trend;
+	/* If load is rising, preemptively increase frequency */
+	if (load_history.trend > 0 && current_level > 0)
+		return -1;	/* Go up one level (lower index = higher freq) */
 
-	/* Rising load: go up one level (lower index = higher freq) */
-	if (trend > 0 && current_level > 0)
-		return -1;
+	/* If load is falling and we're not at minimum, allow faster drop */
+	if (load_history.trend < 0 && current_level < max_level - 1)
+		return 1;	/* Go down one level */
 
-	/* Falling load: go down one level (higher index = lower freq) */
-	if (trend < 0 && current_level < max_level - 1)
-		return 1;
-
-	return 0;
+	return 0;	/* No predictive adjustment */
 }
 
-static inline void reset_load_history(void)
+static void reset_load_history(void)
 {
 	load_history.head = 0;
 	load_history.count = 0;
