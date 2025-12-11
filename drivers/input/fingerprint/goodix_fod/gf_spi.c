@@ -52,6 +52,10 @@
 
 #include "gf_spi.h"
 
+#ifdef CONFIG_CPU_INPUT_BOOST
+extern void cpu_input_boost_kick_max(unsigned int duration_ms);
+#endif
+
 #if defined(USE_SPI_BUS)
 #include <linux/spi/spi.h>
 #include <linux/spi/spidev.h>
@@ -552,6 +556,12 @@ static irqreturn_t gf_irq(int irq, void *handle)
 	temp[0] = GF_NET_EVENT_IRQ;
 	pr_debug("%s enter\n", __func__);
 	__pm_wakeup_event(&fp_wakelock, WAKELOCK_HOLD_TIME);
+
+#ifdef CONFIG_CPU_INPUT_BOOST
+	/* Boost CPU for faster fingerprint unlock */
+	cpu_input_boost_kick_max(300);
+#endif
+
 	sendnlmsg(temp);
 
 	if ((gf_dev->wait_finger_down == true) && (gf_dev->device_available == 1) &&

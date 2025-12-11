@@ -99,6 +99,7 @@ void cpu_input_boost_kick(void)
 
 	__cpu_input_boost_kick(b);
 }
+EXPORT_SYMBOL(cpu_input_boost_kick);
 
 static void __cpu_input_boost_kick_max(struct boost_drv *b,
 				       unsigned int duration_ms)
@@ -131,6 +132,7 @@ void cpu_input_boost_kick_max(unsigned int duration_ms)
 
 	__cpu_input_boost_kick_max(b, duration_ms);
 }
+EXPORT_SYMBOL(cpu_input_boost_kick_max);
 
 static void input_unboost_worker(struct work_struct *work)
 {
