@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Adaptive Deadline I/O Scheduler (ADIOS)
+ * Adaptive Deadline I/O Scheduler (ADIOS) v3.1.7
  * Copyright (C) 2025 Masahito Suzuki
  *
  * Backported to kernel 4.14 by Miguel (2025)
- * - Adapted elevator_mq_ops structure (.ops.mq)
- * - Replaced scoped_guard/guard with explicit locking
+ * - Replaced scoped_guard/guard with explicit spinlock calls
  * - Replaced timer_shutdown_sync with del_timer_sync
+ * - Replaced timer_container_of with container_of
  * - Adapted function signatures for kernel 4.14 APIs
- * - Replaced blk_mq_free_requests with blk_mq_free_request loop
+ * - Removed RCU protection (using seqlock instead)
+ * - Adapted elevator registration for 4.14
  */
 
 #include <linux/bio.h>
@@ -25,16 +26,44 @@
 #include <linux/timekeeping.h>
 #include <linux/percpu.h>
 #include <linux/elevator.h>
+#include <linux/list_sort.h>
 
 #include "blk.h"
 #include "blk-mq.h"
 #include "blk-mq-sched.h"
 #include "blk-mq-tag.h"
 
-#define ADIOS_VERSION "2.1.1-k414"
+#define ADIOS_VERSION "3.1.7-k414"
 
-/* Define operation types supported by ADIOS */
-enum adios_op_type {
+/*
+ * Request Types - 4-Tier Priority System:
+ *
+ * Tier 0 (Highest): Emergency & System Integrity (BLK_MQ_INSERT_AT_HEAD)
+ * Tier 1 (High): I/O Barrier Guarantees (REQ_OP_FLUSH)
+ * Tier 2 (Medium): Synchronous requests (application responsiveness)
+ * Tier 3 (Normal): Asynchronous requests (background throughput)
+ */
+
+/* Global latency window defaults */
+static u64 default_global_latency_window            = 16000000ULL;
+static u64 default_global_latency_window_rotational = 22000000ULL;
+static u8  default_bq_refill_below_ratio = 20;
+static u64 default_lat_model_latency_limit = 500000000ULL;
+static u64 default_batch_order = 0;
+
+/* Compliance flags */
+enum adios_compliance_flags {
+	ADIOS_CF_FIXORDER  = 1U << 0,
+};
+
+static u64 default_compliance_flags = 0x0;
+
+/* Dynamic thresholds for shrinkage */
+static u32 default_lm_shrink_at_kreqs  =  5000;
+static u32 default_lm_shrink_at_gbytes =    50;
+static u32 default_lm_shrink_resist    =     2;
+
+enum adios_optype {
 	ADIOS_READ    = 0,
 	ADIOS_WRITE   = 1,
 	ADIOS_DISCARD = 2,
@@ -42,20 +71,9 @@ enum adios_op_type {
 	ADIOS_OPTYPES = 4,
 };
 
-/* Global variable to control the latency */
-static u64 default_global_latency_window = 32000000ULL;
-
-/* Ratio below which batch queues should be refilled */
-static u8  default_bq_refill_below_ratio = 25;
-
-/* Dynamic thresholds for shrinkage */
-static u32 default_lm_shrink_at_kreqs  =  5000;
-static u32 default_lm_shrink_at_gbytes =    50;
-static u32 default_lm_shrink_resist    =     2;
-
 /* Latency targets for each operation type */
 static u64 default_latency_target[ADIOS_OPTYPES] = {
-	[ADIOS_READ]    =     1ULL * NSEC_PER_MSEC,
+	[ADIOS_READ]    =     2ULL * NSEC_PER_MSEC,
 	[ADIOS_WRITE]   =  2000ULL * NSEC_PER_MSEC,
 	[ADIOS_DISCARD] =  8000ULL * NSEC_PER_MSEC,
 	[ADIOS_OTHER]   =     0ULL * NSEC_PER_MSEC,
@@ -63,43 +81,71 @@ static u64 default_latency_target[ADIOS_OPTYPES] = {
 
 /* Maximum batch size limits for each operation type */
 static u32 default_batch_limit[ADIOS_OPTYPES] = {
-	[ADIOS_READ]    = 24,
-	[ADIOS_WRITE]   = 48,
+	[ADIOS_READ]    = 36,
+	[ADIOS_WRITE]   = 72,
 	[ADIOS_DISCARD] =  1,
 	[ADIOS_OTHER]   =  1,
 };
 
-static u32 default_dl_prio[2] = {7, 0};
+enum adios_batch_order {
+	ADIOS_BO_OPTYPE   = 0,
+	ADIOS_BO_ELEVATOR = 1,
+};
 
-/* Thresholds for latency model control */
+/* Latency model thresholds */
 #define LM_BLOCK_SIZE_THRESHOLD 4096
 #define LM_SAMPLES_THRESHOLD    1024
 #define LM_INTERVAL_THRESHOLD   1500
 #define LM_OUTLIER_PERCENTILE     99
 #define LM_LAT_BUCKET_COUNT       64
 
-/* Structure to hold latency bucket data for small requests */
+#define ADIOS_PQ_LEVELS 2
+#define ADIOS_DL_TYPES  2
+#define ADIOS_BQ_PAGES  2
+
+static u32 default_dl_prio[ADIOS_DL_TYPES] = {8, 0};
+
+/* State flags */
+enum adios_state_flags {
+	ADIOS_STATE_PQ_0      = 1U << 0,
+	ADIOS_STATE_PQ_1      = 1U << 1,
+	ADIOS_STATE_DL_0      = 1U << 2,
+	ADIOS_STATE_DL_1      = 1U << 3,
+	ADIOS_STATE_BQ_PAGE_0 = 1U << 4,
+	ADIOS_STATE_BQ_PAGE_1 = 1U << 5,
+	ADIOS_STATE_BARRIER   = 1U << 6,
+};
+#define ADIOS_STATE_PQ 0
+#define ADIOS_STATE_DL 2
+#define ADIOS_STATE_BQ 4
+#define ADIOS_STATE_BP 6
+
+#define ADIOS_QUANTUM_SHIFT 20
+#define ADIOS_MAX_INSERTS_PER_LOCK 72
+#define ADIOS_MAX_DELETES_PER_LOCK 24
+
+/* Latency bucket for small requests */
 struct latency_bucket_small {
-	u64 sum_latency;
-	u32 count;
+	u64 weighted_sum_latency;
+	u64 sum_of_weights;
 };
 
-/* Structure to hold latency bucket data for large requests */
+/* Latency bucket for large requests */
 struct latency_bucket_large {
-	u64 sum_latency;
-	u64 sum_block_size;
-	u32 count;
+	u64 weighted_sum_latency;
+	u64 weighted_sum_block_size;
+	u64 sum_of_weights;
 };
 
-/* Per-cpu buckets for data locality */
-struct per_cpu_lm_buckets {
+/* Per-cpu buckets */
+struct lm_buckets {
 	struct latency_bucket_small small_bucket[LM_LAT_BUCKET_COUNT];
 	struct latency_bucket_large large_bucket[LM_LAT_BUCKET_COUNT];
 };
 
-/* Structure to hold the latency model context data */
+/* Latency model */
 struct latency_model {
-	seqlock_t lock;
+	spinlock_t update_lock;
 	u64 base;
 	u64 slope;
 	u64 small_sum_delay;
@@ -107,64 +153,93 @@ struct latency_model {
 	u64 large_sum_delay;
 	u64 large_sum_bsize;
 	u64 last_update_jiffies;
-	/* Per-CPU buckets to avoid lock contention on the completion path */
-	struct per_cpu_lm_buckets __percpu *pcpu_buckets;
+
+	struct lm_buckets __percpu *pcpu_buckets;
+
 	u32 lm_shrink_at_kreqs;
 	u32 lm_shrink_at_gbytes;
 	u8  lm_shrink_resist;
 };
 
-#define ADIOS_BQ_PAGES 2
-#define ADIOS_MAX_INSERTS_PER_LOCK 16
+union adios_in_flight_rqs {
+	atomic64_t	atomic;
+	u64			scalar;
+	struct {
+		u64 	count:          16;
+		u64 	total_pred_lat: 48;
+	};
+};
 
-/* Adios scheduler data */
+/* Main scheduler data */
 struct adios_data {
 	spinlock_t pq_lock;
-	struct list_head prio_queue;
+	struct list_head prio_queue[2];
+
 	struct rb_root_cached dl_tree[2];
 	spinlock_t lock;
-	u8  dl_queued;
 	s64 dl_bias;
 	s32 dl_prio[2];
+
+	atomic_t state;
+	u8  bq_state[ADIOS_BQ_PAGES];
+
 	u64 global_latency_window;
+	u64 compliance_flags;
 	u64 latency_target[ADIOS_OPTYPES];
 	u32 batch_limit[ADIOS_OPTYPES];
 	u32 batch_actual_max_size[ADIOS_OPTYPES];
 	u32 batch_actual_max_total;
 	u32 async_depth;
+	u32 lat_model_latency_limit;
 	u8  bq_refill_below_ratio;
+	u8  is_rotational;
+	u8  batch_order;
+	u8  elv_direction;
+	sector_t head_pos;
+	sector_t last_completed_pos;
+
 	bool bq_page;
-	bool more_bq_ready;
 	struct list_head batch_queue[ADIOS_BQ_PAGES][ADIOS_OPTYPES];
 	u32 batch_count[ADIOS_BQ_PAGES][ADIOS_OPTYPES];
+	u8  bq_batch_order[ADIOS_BQ_PAGES];
 	spinlock_t bq_lock;
-	struct per_cpu_lm_buckets *aggr_buckets;
+	spinlock_t barrier_lock;
+	struct list_head barrier_queue;
+
+	struct lm_buckets *aggr_buckets;
+
 	struct latency_model latency_model[ADIOS_OPTYPES];
 	struct timer_list update_timer;
-	atomic64_t total_pred_lat;
+
+	union adios_in_flight_rqs in_flight_rqs;
+	u64 last_completed_time;
+
 	struct kmem_cache *rq_data_pool;
 	struct kmem_cache *dl_group_pool;
+
 	struct request_queue *queue;
 };
 
-/* List of requests with the same deadline in the deadline-sorted tree */
+/* Deadline group in RB tree */
 struct dl_group {
 	struct rb_node node;
 	struct list_head rqs;
 	u64 deadline;
 } __aligned(64);
 
-/* Structure to hold scheduler-specific data for each request */
+/* Per-request scheduler data */
 struct adios_rq_data {
 	struct list_head *dl_group;
 	struct list_head dl_node;
+
 	struct request *rq;
 	u64 deadline;
 	u64 pred_lat;
 	u32 block_size;
+	bool managed;
 } __aligned(64);
 
-static const int adios_prio_to_weight[40] = {
+static const int adios_prio_to_wmult[40] = {
  /* -20 */     88761,     71755,     56483,     46273,     36291,
  /* -15 */     29154,     23254,     18705,     14949,     11916,
  /* -10 */      9548,      7620,      6100,      4904,      3906,
@@ -175,25 +250,30 @@ static const int adios_prio_to_weight[40] = {
  /*  15 */        36,        29,        23,        18,        15,
 };
 
-/* Count the number of entries in aggregated small buckets */
-static u32 lm_count_small_entries(struct latency_bucket_small *buckets)
+static inline bool compliant(struct adios_data *ad, u32 flag)
 {
-	u32 total_count = 0;
+	return ad->compliance_flags & flag;
+}
+
+/* Count entries in aggregated small buckets */
+static u64 lm_count_small_entries(struct latency_bucket_small *buckets)
+{
+	u64 total_weight = 0;
 	u8 i;
 
 	for (i = 0; i < LM_LAT_BUCKET_COUNT; i++)
-		total_count += buckets[i].count;
-	return total_count;
+		total_weight += buckets[i].sum_of_weights;
+	return total_weight;
 }
 
-/* Update the small buckets in the latency model from aggregated data */
+/* Update small buckets in the latency model */
 static bool lm_update_small_buckets(struct latency_model *model,
 		struct latency_bucket_small *buckets,
-		u32 total_count, bool count_all)
+		u64 total_weight, bool count_all)
 {
 	u64 sum_latency = 0;
-	u32 sum_count = 0;
-	u32 cumulative_count = 0, threshold_count = 0;
+	u64 sum_weight = 0;
+	u64 cumulative_weight = 0, threshold_weight = 0;
 	u8  outlier_threshold_bucket = 0;
 	u8  outlier_percentile = LM_OUTLIER_PERCENTILE;
 	u8  reduction;
@@ -202,37 +282,32 @@ static bool lm_update_small_buckets(struct latency_model *model,
 	if (count_all)
 		outlier_percentile = 100;
 
-	/* Calculate the threshold count for outlier detection */
-	threshold_count = (total_count * outlier_percentile) / 100;
+	threshold_weight = (total_weight * outlier_percentile) / 100;
 
-	/* Identify the bucket that corresponds to the outlier threshold */
 	for (i = 0; i < LM_LAT_BUCKET_COUNT; i++) {
-		cumulative_count += buckets[i].count;
-		if (cumulative_count >= threshold_count) {
+		cumulative_weight += buckets[i].sum_of_weights;
+		if (cumulative_weight >= threshold_weight) {
 			outlier_threshold_bucket = i;
 			break;
 		}
 	}
 
-	/* Calculate the average latency, excluding outliers */
 	for (i = 0; i <= outlier_threshold_bucket; i++) {
 		struct latency_bucket_small *bucket = &buckets[i];
 		if (i < outlier_threshold_bucket) {
-			sum_latency += bucket->sum_latency;
-			sum_count += bucket->count;
+			sum_latency += bucket->weighted_sum_latency;
+			sum_weight += bucket->sum_of_weights;
 		} else {
-			/* The threshold bucket's contribution is proportional */
-			u64 remaining_count =
-				threshold_count - (cumulative_count - bucket->count);
-			if (bucket->count > 0) {
-				sum_latency += div_u64(
-					(bucket->sum_latency * remaining_count), bucket->count);
-				sum_count += remaining_count;
+			u64 remaining_weight =
+				threshold_weight - (cumulative_weight - bucket->sum_of_weights);
+			if (bucket->sum_of_weights > 0) {
+				sum_latency += div_u64(bucket->weighted_sum_latency *
+					remaining_weight, bucket->sum_of_weights);
+				sum_weight += remaining_weight;
 			}
 		}
 	}
 
-	/* Shrink the model if it reaches at the readjustment threshold */
 	if (model->small_count >= 1000ULL * model->lm_shrink_at_kreqs) {
 		reduction = model->lm_shrink_resist;
 		if (model->small_count >> reduction) {
@@ -241,32 +316,35 @@ static bool lm_update_small_buckets(struct latency_model *model,
 		}
 	}
 
-	/* Accumulate the average latency into the statistics */
+	if (!sum_weight)
+		return false;
+
 	model->small_sum_delay += sum_latency;
-	model->small_count += sum_count;
+	model->small_count     += sum_weight;
 
 	return true;
 }
 
-/* Count the number of entries in aggregated large buckets */
-static u32 lm_count_large_entries(struct latency_bucket_large *buckets)
+/* Count entries in aggregated large buckets */
+static u64 lm_count_large_entries(struct latency_bucket_large *buckets)
 {
-	u32 total_count = 0;
+	u64 total_weight = 0;
 	u8 i;
 
 	for (i = 0; i < LM_LAT_BUCKET_COUNT; i++)
-		total_count += buckets[i].count;
-	return total_count;
+		total_weight += buckets[i].sum_of_weights;
+	return total_weight;
 }
 
-/* Update the large buckets in the latency model from aggregated data */
+/* Update large buckets in the latency model */
 static bool lm_update_large_buckets(struct latency_model *model,
 		struct latency_bucket_large *buckets,
-		u32 total_count, bool count_all)
+		u64 total_weight, bool count_all)
 {
 	s64 sum_latency = 0;
 	u64 sum_block_size = 0, intercept;
-	u32 cumulative_count = 0, threshold_count = 0;
+	u64 cumulative_weight = 0, threshold_weight = 0;
+	u64 sum_weight = 0;
 	u8  outlier_threshold_bucket = 0;
 	u8  outlier_percentile = LM_OUTLIER_PERCENTILE;
 	u8  reduction;
@@ -275,38 +353,38 @@ static bool lm_update_large_buckets(struct latency_model *model,
 	if (count_all)
 		outlier_percentile = 100;
 
-	/* Calculate the threshold count for outlier detection */
-	threshold_count = (total_count * outlier_percentile) / 100;
+	threshold_weight = (total_weight * outlier_percentile) / 100;
 
-	/* Identify the bucket that corresponds to the outlier threshold */
 	for (i = 0; i < LM_LAT_BUCKET_COUNT; i++) {
-		cumulative_count += buckets[i].count;
-		if (cumulative_count >= threshold_count) {
+		cumulative_weight += buckets[i].sum_of_weights;
+		if (cumulative_weight >= threshold_weight) {
 			outlier_threshold_bucket = i;
 			break;
 		}
 	}
 
-	/* Calculate the average latency and block size, excluding outliers */
 	for (i = 0; i <= outlier_threshold_bucket; i++) {
 		struct latency_bucket_large *bucket = &buckets[i];
 		if (i < outlier_threshold_bucket) {
-			sum_latency += bucket->sum_latency;
-			sum_block_size += bucket->sum_block_size;
+			sum_latency += bucket->weighted_sum_latency;
+			sum_block_size += bucket->weighted_sum_block_size;
+			sum_weight += bucket->sum_of_weights;
 		} else {
-			/* The threshold bucket's contribution is proportional */
-			u64 remaining_count =
-				threshold_count - (cumulative_count - bucket->count);
-			if (bucket->count > 0) {
-				sum_latency += div_u64(
-					(bucket->sum_latency * remaining_count), bucket->count);
-				sum_block_size += div_u64(
-					(bucket->sum_block_size * remaining_count), bucket->count);
+			u64 remaining_weight =
+				threshold_weight - (cumulative_weight - bucket->sum_of_weights);
+			if (bucket->sum_of_weights > 0) {
+				sum_latency += div_u64(bucket->weighted_sum_latency *
+					remaining_weight, bucket->sum_of_weights);
+				sum_block_size += div_u64(bucket->weighted_sum_block_size *
+					remaining_weight, bucket->sum_of_weights);
+				sum_weight += remaining_weight;
 			}
 		}
 	}
 
-	/* Shrink the model if it reaches at the readjustment threshold */
+	if (!sum_weight)
+		return false;
+
 	if (model->large_sum_bsize >= 0x40000000ULL * model->lm_shrink_at_gbytes) {
 		reduction = model->lm_shrink_resist;
 		if (model->large_sum_bsize >> reduction) {
@@ -315,93 +393,107 @@ static bool lm_update_large_buckets(struct latency_model *model,
 		}
 	}
 
-	/* Accumulate the average delay into the statistics */
-	intercept = model->base * threshold_count;
-	if (sum_latency > intercept)
+	intercept = model->base;
+	if (sum_latency > (s64)intercept)
 		sum_latency -= intercept;
+
 	model->large_sum_delay += sum_latency;
 	model->large_sum_bsize += sum_block_size;
 
 	return true;
 }
 
-/* Update the latency model parameters and statistics */
+static void reset_buckets(struct lm_buckets *buckets)
+{
+	memset(buckets, 0, sizeof(*buckets));
+}
+
+static void lm_reset_pcpu_buckets(struct latency_model *model)
+{
+	int cpu;
+
+	for_each_possible_cpu(cpu)
+		reset_buckets(per_cpu_ptr(model->pcpu_buckets, cpu));
+}
+
+/* Update latency model parameters */
 static void latency_model_update(struct adios_data *ad, struct latency_model *model)
 {
 	u64 now;
-	u32 small_count, large_count;
+	u64 small_weight, large_weight;
 	bool time_elapsed;
 	bool small_processed = false, large_processed = false;
-	struct per_cpu_lm_buckets *aggr = ad->aggr_buckets;
+	struct lm_buckets *aggr = ad->aggr_buckets;
 	struct latency_bucket_small *asb;
 	struct latency_bucket_large *alb;
-	struct per_cpu_lm_buckets *pcpu_b;
+	struct lm_buckets *pcpu_b;
 	unsigned long flags;
 	int cpu;
 	u8 i;
 
-	memset(aggr, 0, sizeof(*aggr));
+	spin_lock_irqsave(&model->update_lock, flags);
 
-	write_seqlock_irqsave(&model->lock, flags);
-
-	/* Aggregate data from all CPUs and reset per-cpu buckets */
+	/* Aggregate data from all CPUs */
 	for_each_possible_cpu(cpu) {
 		pcpu_b = per_cpu_ptr(model->pcpu_buckets, cpu);
+
 		for (i = 0; i < LM_LAT_BUCKET_COUNT; i++) {
-			if (pcpu_b->small_bucket[i].count) {
+			if (pcpu_b->small_bucket[i].sum_of_weights) {
 				asb = &aggr->small_bucket[i];
-				asb->count       += pcpu_b->small_bucket[i].count;
-				asb->sum_latency += pcpu_b->small_bucket[i].sum_latency;
+				asb->sum_of_weights +=
+					pcpu_b->small_bucket[i].sum_of_weights;
+				asb->weighted_sum_latency +=
+					pcpu_b->small_bucket[i].weighted_sum_latency;
 			}
-			if (pcpu_b->large_bucket[i].count) {
+			if (pcpu_b->large_bucket[i].sum_of_weights) {
 				alb = &aggr->large_bucket[i];
-				alb->count          += pcpu_b->large_bucket[i].count;
-				alb->sum_latency    += pcpu_b->large_bucket[i].sum_latency;
-				alb->sum_block_size += pcpu_b->large_bucket[i].sum_block_size;
+				alb->sum_of_weights +=
+					pcpu_b->large_bucket[i].sum_of_weights;
+				alb->weighted_sum_latency +=
+					pcpu_b->large_bucket[i].weighted_sum_latency;
+				alb->weighted_sum_block_size +=
+					pcpu_b->large_bucket[i].weighted_sum_block_size;
 			}
 		}
-		/* Reset per-cpu buckets after aggregating */
-		memset(pcpu_b, 0, sizeof(*pcpu_b));
+		reset_buckets(pcpu_b);
 	}
 
-	/* Whether enough time has elapsed since the last update */
+	small_weight = lm_count_small_entries(aggr->small_bucket);
+	large_weight = lm_count_large_entries(aggr->large_bucket);
+
 	now = jiffies;
-	time_elapsed = unlikely(!model->base) || model->last_update_jiffies +
+	time_elapsed = unlikely(!model->base) ||
+		model->last_update_jiffies +
 		msecs_to_jiffies(LM_INTERVAL_THRESHOLD) <= now;
 
-	/* Count the number of entries in aggregated buckets */
-	small_count = lm_count_small_entries(aggr->small_bucket);
-	large_count = lm_count_large_entries(aggr->large_bucket);
+	if (small_weight && (time_elapsed ||
+			LM_SAMPLES_THRESHOLD <= small_weight || !model->base)) {
+		small_processed = lm_update_small_buckets(model,
+			aggr->small_bucket, small_weight, !model->base);
+		memset(&aggr->small_bucket[0], 0, sizeof(aggr->small_bucket));
+	}
 
-	/* Update small buckets */
-	if (small_count && (time_elapsed ||
-			LM_SAMPLES_THRESHOLD <= small_count || !model->base))
-		small_processed = lm_update_small_buckets(
-			model, aggr->small_bucket, small_count, !model->base);
+	if (large_weight && (time_elapsed ||
+			LM_SAMPLES_THRESHOLD <= large_weight || !model->slope)) {
+		large_processed = lm_update_large_buckets(model,
+			aggr->large_bucket, large_weight, !model->slope);
+		memset(&aggr->large_bucket[0], 0, sizeof(aggr->large_bucket));
+	}
 
-	/* Update large buckets */
-	if (large_count && (time_elapsed ||
-			LM_SAMPLES_THRESHOLD <= large_count || !model->slope))
-		large_processed = lm_update_large_buckets(
-			model, aggr->large_bucket, large_count, !model->slope);
-
-	/* Update the base parameter if small bucket was processed */
 	if (small_processed && likely(model->small_count))
 		model->base = div_u64(model->small_sum_delay, model->small_count);
 
-	/* Update the slope parameter if large bucket was processed */
 	if (large_processed && likely(model->large_sum_bsize))
 		model->slope = div_u64(model->large_sum_delay,
 			DIV_ROUND_UP_ULL(model->large_sum_bsize, 1024));
 
-	/* Reset statistics and update last updated jiffies if time has elapsed */
-	if (time_elapsed)
+	if (small_processed || large_processed || time_elapsed)
 		model->last_update_jiffies = now;
 
-	write_sequnlock_irqrestore(&model->lock, flags);
+	spin_unlock_irqrestore(&model->update_lock, flags);
 }
 
-/* Determine the bucket index for a given measured and predicted latency */
+/* Determine bucket index for latency input */
 static u8 lm_input_bucket_index(u64 measured, u64 predicted)
 {
 	u8 bucket_index;
@@ -416,64 +508,71 @@ static u8 lm_input_bucket_index(u64 measured, u64 predicted)
 	return bucket_index;
 }
 
-/* Input latency data into the latency model */
+/* Input latency data */
 static void latency_model_input(struct adios_data *ad,
-		struct latency_model *model, u32 block_size, u64 latency, u64 pred_lat)
+		struct latency_model *model,
+		u32 block_size, u64 latency, u64 pred_lat, u32 weight)
 {
+	unsigned long flags;
 	u8 bucket_index;
-	struct per_cpu_lm_buckets *buckets;
+	struct lm_buckets *buckets;
+	u64 current_base;
 
+	local_irq_save(flags);
 	buckets = this_cpu_ptr(model->pcpu_buckets);
+	current_base = model->base;
 
 	if (block_size <= LM_BLOCK_SIZE_THRESHOLD) {
-		/* Handle small requests */
-		bucket_index = lm_input_bucket_index(latency, model->base ?: 1);
+		bucket_index = lm_input_bucket_index(latency, current_base ?: 1);
+
 		if (bucket_index >= LM_LAT_BUCKET_COUNT)
 			bucket_index = LM_LAT_BUCKET_COUNT - 1;
 
-		buckets->small_bucket[bucket_index].count++;
-		buckets->small_bucket[bucket_index].sum_latency += latency;
+		buckets->small_bucket[bucket_index].sum_of_weights += weight;
+		buckets->small_bucket[bucket_index].weighted_sum_latency +=
+			latency * weight;
 
-		if (unlikely(!model->base)) {
+		local_irq_restore(flags);
+
+		if (unlikely(!current_base)) {
 			latency_model_update(ad, model);
 			return;
 		}
 	} else {
-		/* Handle large requests */
-		if (!model->base || !pred_lat)
+		if (!current_base || !pred_lat) {
+			local_irq_restore(flags);
 			return;
+		}
 
 		bucket_index = lm_input_bucket_index(latency, pred_lat);
+
 		if (bucket_index >= LM_LAT_BUCKET_COUNT)
 			bucket_index = LM_LAT_BUCKET_COUNT - 1;
 
-		buckets->large_bucket[bucket_index].count++;
-		buckets->large_bucket[bucket_index].sum_latency += latency;
-		buckets->large_bucket[bucket_index].sum_block_size += block_size;
+		buckets->large_bucket[bucket_index].sum_of_weights += weight;
+		buckets->large_bucket[bucket_index].weighted_sum_latency +=
+			latency * weight;
+		buckets->large_bucket[bucket_index].weighted_sum_block_size +=
+			block_size * weight;
+
+		local_irq_restore(flags);
 	}
 }
 
-/* Predict the latency for a given block size using the latency model */
+/* Predict latency */
 static u64 latency_model_predict(struct latency_model *model, u32 block_size)
 {
-	u64 result, base, slope;
-	unsigned int seq;
+	u64 result;
 
-	do {
-		seq = read_seqbegin(&model->lock);
-		base = model->base;
-		slope = model->slope;
-	} while (read_seqretry(&model->lock, seq));
-
-	result = base;
+	result = model->base;
 	if (block_size > LM_BLOCK_SIZE_THRESHOLD)
-		result += slope *
+		result += model->slope *
 			DIV_ROUND_UP_ULL(block_size - LM_BLOCK_SIZE_THRESHOLD, 1024);
 
 	return result;
 }
 
-/* Determine the type of operation based on request flags */
+/* Determine operation type */
 static u8 adios_optype(struct request *rq)
 {
 	switch (req_op(rq)) {
@@ -493,13 +592,35 @@ static inline u8 adios_optype_not_read(struct request *rq)
 	return req_op(rq) != REQ_OP_READ;
 }
 
-/* Helper function to retrieve adios_rq_data from a request */
 static inline struct adios_rq_data *get_rq_data(struct request *rq)
 {
 	return rq->elv.priv[0];
 }
 
-/* Add a request to the deadline-sorted red-black tree */
+static inline void set_adios_state(struct adios_data *ad, u32 shift, u32 idx, bool flag)
+{
+	if (flag)
+		atomic_or(1U << (idx + shift), &ad->state);
+	else
+		atomic_andnot(1U << (idx + shift), &ad->state);
+}
+
+static inline u32 get_adios_state(struct adios_data *ad)
+{
+	return atomic_read(&ad->state);
+}
+
+static inline u32 eval_this_adios_state(u32 state, u32 shift)
+{
+	return (state >> shift) & 0x3;
+}
+
+static inline u32 eval_adios_state(struct adios_data *ad, u32 shift)
+{
+	return eval_this_adios_state(get_adios_state(ad), shift);
+}
+
+/* Add request to deadline tree */
 static void add_to_dl_tree(struct adios_data *ad, bool dl_idx, struct request *rq)
 {
 	struct rb_root_cached *root = &ad->dl_tree[dl_idx];
@@ -507,48 +628,56 @@ static void add_to_dl_tree(struct adios_data *ad, bool dl_idx, struct request *r
 	bool leftmost = true;
 	struct adios_rq_data *rd = get_rq_data(rq);
 	struct dl_group *dlg;
-	u8 optype;
+	u64 deadline;
+	bool was_empty = RB_EMPTY_ROOT(&root->rb_root);
 	s64 diff;
 
-	rd->block_size = blk_rq_bytes(rq);
-	optype = adios_optype(rq);
-	rd->pred_lat =
-		latency_model_predict(&ad->latency_model[optype], rd->block_size);
-	rd->deadline =
-		ktime_get_ns() + ad->latency_target[optype] + rd->pred_lat;
+	/* Tier-2: Synchronous - FIFO within same optype */
+	rd->deadline = ktime_get_ns();
+
+	/* Tier-3: Asynchronous - can be reordered */
+	if (!(rq->cmd_flags & REQ_SYNC)) {
+		rd->deadline += ad->latency_target[adios_optype(rq)];
+		if (!compliant(ad, ADIOS_CF_FIXORDER))
+			rd->deadline += rd->pred_lat;
+	}
+
+	deadline = rd->deadline & ~((1ULL << ADIOS_QUANTUM_SHIFT) - 1);
 
 	while (*link) {
 		dlg = rb_entry(*link, struct dl_group, node);
-		diff = rd->deadline - dlg->deadline;
+		diff = deadline - dlg->deadline;
+
 		parent = *link;
 		if (diff < 0) {
 			link = &((*link)->rb_left);
 		} else if (diff > 0) {
 			link = &((*link)->rb_right);
 			leftmost = false;
-		} else { /* diff == 0 */
+		} else {
 			goto found;
 		}
 	}
 
 	dlg = rb_entry_safe(parent, struct dl_group, node);
-	if (!dlg || dlg->deadline != rd->deadline) {
+	if (!dlg || dlg->deadline != deadline) {
 		dlg = kmem_cache_zalloc(ad->dl_group_pool, GFP_ATOMIC);
 		if (!dlg)
 			return;
-		dlg->deadline = rd->deadline;
+		dlg->deadline = deadline;
 		INIT_LIST_HEAD(&dlg->rqs);
 		rb_link_node(&dlg->node, parent, link);
 		rb_insert_color_cached(&dlg->node, root, leftmost);
 	}
-
 found:
 	list_add_tail(&rd->dl_node, &dlg->rqs);
 	rd->dl_group = &dlg->rqs;
-	ad->dl_queued |= 1 << dl_idx;
+
+	if (was_empty)
+		set_adios_state(ad, ADIOS_STATE_DL, dl_idx, true);
 }
 
-/* Remove a request from the deadline-sorted red-black tree */
+/* Remove request from deadline tree */
 static void del_from_dl_tree(struct adios_data *ad, bool dl_idx, struct request *rq)
 {
 	struct rb_root_cached *root = &ad->dl_tree[dl_idx];
@@ -560,13 +689,13 @@ static void del_from_dl_tree(struct adios_data *ad, bool dl_idx, struct request 
 		rb_erase_cached(&dlg->node, root);
 		kmem_cache_free(ad->dl_group_pool, dlg);
 	}
-
 	rd->dl_group = NULL;
+
 	if (RB_EMPTY_ROOT(&ad->dl_tree[dl_idx].rb_root))
-		ad->dl_queued &= ~(1 << dl_idx);
+		set_adios_state(ad, ADIOS_STATE_DL, dl_idx, false);
 }
 
-/* Remove a request from the scheduler */
+/* Remove request from scheduler */
 static void remove_request(struct adios_data *ad, struct request *rq)
 {
 	bool dl_idx = adios_optype_not_read(rq);
@@ -575,7 +704,6 @@ static void remove_request(struct adios_data *ad, struct request *rq)
 
 	list_del_init(&rq->queuelist);
 
-	/* We might not be on the rbtree, if we are doing an insert merge */
 	if (rd->dl_group)
 		del_from_dl_tree(ad, dl_idx, rq);
 
@@ -584,7 +712,7 @@ static void remove_request(struct adios_data *ad, struct request *rq)
 		q->last_merge = NULL;
 }
 
-/* Convert a queue depth to the corresponding word depth for shallow allocation */
+/* Convert queue depth to word depth */
 static int to_word_depth(struct blk_mq_hw_ctx *hctx, unsigned int qdepth)
 {
 	struct sbitmap_queue *bt = &hctx->sched_tags->bitmap_tags;
@@ -593,19 +721,18 @@ static int to_word_depth(struct blk_mq_hw_ctx *hctx, unsigned int qdepth)
 	return ((qdepth << bt->sb.shift) + nrr - 1) / nrr;
 }
 
-/* Limit the depth of request allocation for asynchronous and write requests */
+/* Limit allocation depth for async/write requests */
 static void adios_limit_depth(unsigned int op, struct blk_mq_alloc_data *data)
 {
 	struct adios_data *ad = data->q->elevator->elevator_data;
 
-	/* Do not throttle synchronous reads */
 	if (op_is_sync(op) && !op_is_write(op))
 		return;
 
 	data->shallow_depth = to_word_depth(data->hctx, ad->async_depth);
 }
 
-/* Update async_depth when the number of requests in the queue changes */
+/* Depth updated callback */
 static void adios_depth_updated(struct blk_mq_hw_ctx *hctx)
 {
 	struct request_queue *q = hctx->queue;
@@ -616,31 +743,28 @@ static void adios_depth_updated(struct blk_mq_hw_ctx *hctx)
 	sbitmap_queue_min_shallow_depth(&tags->bitmap_tags, 1);
 }
 
-/* Handle request merging after a merge operation */
+/* Handle request merged */
 static void adios_request_merged(struct request_queue *q, struct request *req,
-				 enum elv_merge type)
+				  enum elv_merge type)
 {
 	bool dl_idx = adios_optype_not_read(req);
 	struct adios_data *ad = q->elevator->elevator_data;
 
-	/* Reposition request in the deadline-sorted tree */
 	del_from_dl_tree(ad, dl_idx, req);
 	add_to_dl_tree(ad, dl_idx, req);
 }
 
-/* Handle merging of requests after one has been merged into another */
+/* Handle requests merged */
 static void adios_merged_requests(struct request_queue *q, struct request *req,
-				  struct request *next)
+				   struct request *next)
 {
 	struct adios_data *ad = q->elevator->elevator_data;
 
 	lockdep_assert_held(&ad->lock);
-
-	/* kill knowledge of next, this one is a goner */
 	remove_request(ad, next);
 }
 
-/* Try to merge a bio into an existing rq before associating it with an rq */
+/* Try to merge bio */
 static bool adios_bio_merge(struct blk_mq_hw_ctx *hctx, struct bio *bio)
 {
 	struct request_queue *q = hctx->queue;
@@ -649,7 +773,12 @@ static bool adios_bio_merge(struct blk_mq_hw_ctx *hctx, struct bio *bio)
 	unsigned long flags;
 	bool ret;
 
-	spin_lock_irqsave(&ad->lock, flags);
+	if (eval_adios_state(ad, ADIOS_STATE_BP))
+		return false;
+
+	if (!spin_trylock_irqsave(&ad->lock, flags))
+		return false;
+
 	ret = blk_mq_sched_try_merge(q, bio, &free);
 	spin_unlock_irqrestore(&ad->lock, flags);
 
@@ -659,19 +788,58 @@ static bool adios_bio_merge(struct blk_mq_hw_ctx *hctx, struct bio *bio)
 	return ret;
 }
 
-/* Insert a request into the scheduler */
-static void insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
-			   bool at_head)
+/* Insert to priority queue */
+static void insert_to_prio_queue(struct adios_data *ad, struct request *rq, bool pq_idx)
+{
+	struct adios_rq_data *rd = get_rq_data(rq);
+	unsigned long flags;
+	bool was_empty;
+
+	if (rd->managed) {
+		union adios_in_flight_rqs ifr = {
+			.count          = 1,
+			.total_pred_lat = rd->pred_lat,
+		};
+		atomic64_add(ifr.scalar, &ad->in_flight_rqs.atomic);
+	}
+
+	spin_lock_irqsave(&ad->pq_lock, flags);
+	was_empty = list_empty(&ad->prio_queue[pq_idx]);
+	list_add_tail(&rq->queuelist, &ad->prio_queue[pq_idx]);
+	if (was_empty)
+		set_adios_state(ad, ADIOS_STATE_PQ, pq_idx, true);
+	spin_unlock_irqrestore(&ad->pq_lock, flags);
+}
+
+/* Insert request */
+static void insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq, bool at_head)
 {
 	struct request_queue *q = hctx->queue;
 	struct adios_data *ad = q->elevator->elevator_data;
+	struct adios_rq_data *rd = get_rq_data(rq);
+	u8 optype = adios_optype(rq);
+	bool rq_is_flush;
 
+	rd->managed = true;
+	rd->block_size = blk_rq_bytes(rq);
+	rd->pred_lat = latency_model_predict(&ad->latency_model[optype], rd->block_size);
+
+	/* Tier-0: BLK_MQ_INSERT_AT_HEAD */
 	if (at_head) {
+		insert_to_prio_queue(ad, rq, 0);
+		return;
+	}
+
+	/* Barrier handling for REQ_OP_FLUSH */
+	rq_is_flush = rq->cmd_flags & REQ_PREFLUSH;
+	if (eval_adios_state(ad, ADIOS_STATE_BP) || rq_is_flush) {
 		unsigned long flags;
 
-		spin_lock_irqsave(&ad->pq_lock, flags);
-		list_add_tail(&rq->queuelist, &ad->prio_queue);
-		spin_unlock_irqrestore(&ad->pq_lock, flags);
+		spin_lock_irqsave(&ad->barrier_lock, flags);
+		if (rq_is_flush)
+			set_adios_state(ad, ADIOS_STATE_BP, 0, true);
+		list_add_tail(&rq->queuelist, &ad->barrier_queue);
+		spin_unlock_irqrestore(&ad->barrier_lock, flags);
 		return;
 	}
 
@@ -687,16 +855,16 @@ static void insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 	}
 }
 
-/* Insert multiple requests into the scheduler */
+/* Insert multiple requests */
 static void adios_insert_requests(struct blk_mq_hw_ctx *hctx,
-				  struct list_head *list, bool at_head)
+				   struct list_head *list, bool at_head)
 {
 	struct request_queue *q = hctx->queue;
 	struct adios_data *ad = q->elevator->elevator_data;
 	struct request *rq;
 	unsigned long flags;
-	int i;
 	bool stop = false;
+	int i;
 
 	do {
 		spin_lock_irqsave(&ad->lock, flags);
@@ -713,7 +881,7 @@ static void adios_insert_requests(struct blk_mq_hw_ctx *hctx,
 	} while (!stop);
 }
 
-/* Prepare a request before it is inserted into the scheduler */
+/* Prepare request */
 static void adios_prepare_request(struct request *rq, struct bio *bio)
 {
 	struct adios_data *ad = rq->q->elevator->elevator_data;
@@ -721,10 +889,8 @@ static void adios_prepare_request(struct request *rq, struct bio *bio)
 
 	rq->elv.priv[0] = NULL;
 
-	/* Allocate adios_rq_data from the memory pool */
 	rd = kmem_cache_zalloc(ad->rq_data_pool, GFP_ATOMIC);
-	if (WARN(!rd, "adios_prepare_request: "
-			"Failed to allocate memory from rq_data_pool. rd is NULL\n"))
+	if (WARN(!rd, "adios: Failed to allocate rq_data\n"))
 		return;
 
 	rd->rq = rq;
@@ -740,165 +906,379 @@ static struct adios_rq_data *get_dl_first_rd(struct adios_data *ad, bool idx)
 	return list_first_entry(&dl_group->rqs, struct adios_rq_data, dl_node);
 }
 
-/* Fill the batch queues with requests from the deadline-sorted red-black tree */
-static bool fill_batch_queues(struct adios_data *ad, u64 current_lat)
+/* Compare requests by position */
+static int cmp_rq_pos(void *priv, struct list_head *a, struct list_head *b)
+{
+	struct request *rq_a = list_entry(a, struct request, queuelist);
+	struct request *rq_b = list_entry(b, struct request, queuelist);
+	u64 pos_a = blk_rq_pos(rq_a);
+	u64 pos_b = blk_rq_pos(rq_b);
+
+	return (int)(pos_a > pos_b) - (int)(pos_a < pos_b);
+}
+
+/* Update elevator direction */
+static void update_elv_direction(struct adios_data *ad)
+{
+	bool page;
+	struct list_head *q;
+	struct request *rq_a, *rq_b;
+	u64 pos_a, pos_b, avg_rq_pos;
+
+	if (!ad->is_rotational)
+		return;
+
+	page = ad->bq_page;
+	q = &ad->batch_queue[page][1];
+	if (ad->bq_batch_order[page] < ADIOS_BO_ELEVATOR || list_empty(q)) {
+		ad->elv_direction = 0;
+		return;
+	}
+
+	rq_a = list_first_entry(q, struct request, queuelist);
+	rq_b = list_last_entry(q, struct request, queuelist);
+	pos_a = blk_rq_pos(rq_a);
+	pos_b = blk_rq_pos(rq_b);
+	avg_rq_pos = (pos_a + pos_b) >> 1;
+
+	ad->elv_direction = !!(ad->head_pos > avg_rq_pos);
+}
+
+/* Fill batch queues from deadline tree */
+static bool fill_batch_queues(struct adios_data *ad, u64 tpl)
 {
 	struct adios_rq_data *rd;
 	struct request *rq;
+	struct list_head *dest_q;
+	u8  dest_idx;
+	u64 added_lat = 0;
 	u32 optype_count[ADIOS_OPTYPES] = {0};
 	u32 count = 0;
 	u8 optype;
-	bool page = !ad->bq_page, dl_idx, bias_idx, reduce_bias;
+	bool page = !ad->bq_page, dl_idx, bias_idx, update_bias;
+	u32 dl_queued;
+	u8 bq_batch_order;
+	bool stop = false;
 	unsigned long flags;
+	int i;
 
-	/* Reset batch queue counts for the back page */
 	memset(&ad->batch_count[page], 0, sizeof(ad->batch_count[page]));
+	ad->bq_batch_order[page] = bq_batch_order = ad->batch_order;
 
-	spin_lock_irqsave(&ad->lock, flags);
-	while (true) {
-		/* Check if there are any requests queued in the deadline tree */
-		if (!ad->dl_queued)
-			break;
+	do {
+		spin_lock_irqsave(&ad->lock, flags);
+		for (i = 0; i < ADIOS_MAX_DELETES_PER_LOCK; i++) {
+			bool has_base = false;
 
-		dl_idx = ad->dl_queued >> 1;
+			dl_queued = eval_adios_state(ad, ADIOS_STATE_DL);
+			if (!dl_queued) {
+				stop = true;
+				break;
+			}
 
-		/* Get the first request from the deadline-sorted tree */
-		rd = get_dl_first_rd(ad, dl_idx);
+			dl_idx = dl_queued >> 1;
+			rd = get_dl_first_rd(ad, dl_idx);
 
-		bias_idx = ad->dl_bias < 0;
+			bias_idx = ad->dl_bias < 0;
+			if (dl_queued == 0x3) {
+				struct adios_rq_data *trd[2] = {get_dl_first_rd(ad, 0), rd};
+				rd = trd[bias_idx];
+				update_bias = (trd[bias_idx]->deadline > trd[!bias_idx]->deadline);
+			} else {
+				update_bias = (bias_idx == dl_idx);
+			}
 
-		/* If read and write requests are queued, choose one based on bias */
-		if (ad->dl_queued == 0x3) {
-			struct adios_rq_data *trd[2] = {get_dl_first_rd(ad, 0), rd};
-			rd = trd[bias_idx];
-			reduce_bias = (trd[bias_idx]->deadline > trd[!bias_idx]->deadline);
-		} else {
-			reduce_bias = (bias_idx == dl_idx);
+			rq = rd->rq;
+			optype = adios_optype(rq);
+
+			has_base = !!ad->latency_model[optype].base;
+
+			if (count && (!has_base ||
+					ad->batch_count[page][optype] >= ad->batch_limit[optype] ||
+					(tpl + added_lat + rd->pred_lat) > ad->global_latency_window)) {
+				stop = true;
+				break;
+			}
+
+			if (update_bias) {
+				s64 sign = ((s64)bias_idx << 1) - 1;
+				if (unlikely(!rd->pred_lat))
+					ad->dl_bias = sign;
+				else
+					ad->dl_bias += sign * (s64)((rd->pred_lat *
+						adios_prio_to_wmult[ad->dl_prio[bias_idx] + 20]) >> 10);
+			}
+
+			remove_request(ad, rq);
+
+			dest_idx = (bq_batch_order == ADIOS_BO_OPTYPE || optype == ADIOS_OTHER)?
+				optype : !!(rd->deadline != ktime_get_ns());
+			dest_q = &ad->batch_queue[page][dest_idx];
+			list_add_tail(&rq->queuelist, dest_q);
+			ad->bq_state[page] |= 1U << dest_idx;
+			ad->batch_count[page][optype]++;
+			optype_count[optype]++;
+			added_lat += rd->pred_lat;
+			count++;
 		}
+		spin_unlock_irqrestore(&ad->lock, flags);
+	} while (!stop);
 
-		rq = rd->rq;
-		optype = adios_optype(rq);
-
-		/* Check batch size and total predicted latency */
-		if (count && (!ad->latency_model[optype].base ||
-				ad->batch_count[page][optype] >= ad->batch_limit[optype] ||
-				(current_lat + rd->pred_lat) > ad->global_latency_window))
-			break;
-
-		if (reduce_bias) {
-			s64 sign = ((int)bias_idx << 1) - 1;
-			if (unlikely(!rd->pred_lat))
-				ad->dl_bias = sign;
-			else
-				/* Adjust the bias based on the predicted latency */
-				ad->dl_bias += sign * (s64)((rd->pred_lat *
-					adios_prio_to_weight[ad->dl_prio[bias_idx] + 20]) >> 10);
-		}
-
-		remove_request(ad, rq);
-
-		/* Add request to the corresponding batch queue */
-		list_add_tail(&rq->queuelist, &ad->batch_queue[page][optype]);
-		atomic64_add(rd->pred_lat, &ad->total_pred_lat);
-		current_lat += rd->pred_lat;
-		ad->batch_count[page][optype]++;
-		optype_count[optype]++;
-		count++;
-	}
-	spin_unlock_irqrestore(&ad->lock, flags);
+	if (bq_batch_order == ADIOS_BO_ELEVATOR && ad->batch_count[page][1] > 1)
+		list_sort(NULL, &ad->batch_queue[page][1], cmp_rq_pos);
 
 	if (count) {
-		ad->more_bq_ready = true;
+		union adios_in_flight_rqs ifr = {
+			.count          = count,
+			.total_pred_lat = added_lat,
+		};
+		atomic64_add(ifr.scalar, &ad->in_flight_rqs.atomic);
+
+		set_adios_state(ad, ADIOS_STATE_BQ, page, true);
+
 		for (optype = 0; optype < ADIOS_OPTYPES; optype++)
 			if (ad->batch_actual_max_size[optype] < optype_count[optype])
 				ad->batch_actual_max_size[optype] = optype_count[optype];
 		if (ad->batch_actual_max_total < count)
 			ad->batch_actual_max_total = count;
 	}
-
 	return count;
 }
 
-/* Flip to the next batch queue page */
+/* Flip batch queue page */
 static void flip_bq_page(struct adios_data *ad)
 {
-	ad->more_bq_ready = false;
 	ad->bq_page = !ad->bq_page;
+	update_elv_direction(ad);
 }
 
-/* Dispatch a request from the batch queues */
+/* Pop request from batch queue */
+static inline struct request *pop_bq_request(struct adios_data *ad, u8 idx, bool direction)
+{
+	bool page = ad->bq_page;
+	struct list_head *q = &ad->batch_queue[page][idx];
+	struct request *rq;
+
+	if (list_empty(q))
+		return NULL;
+
+	rq = direction ?
+		list_last_entry(q, struct request, queuelist) :
+		list_first_entry(q, struct request, queuelist);
+
+	list_del_init(&rq->queuelist);
+	if (list_empty(q))
+		ad->bq_state[page] &= ~(1U << idx);
+
+	return rq;
+}
+
+static struct request *pop_next_bq_request_optype(struct adios_data *ad)
+{
+	u32 bq_state = ad->bq_state[ad->bq_page];
+	u32 bq_idx;
+
+	if (!bq_state)
+		return NULL;
+
+	bq_idx = __ffs(bq_state);
+	return pop_bq_request(ad, bq_idx, false);
+}
+
+static struct request *pop_next_bq_request_elevator(struct adios_data *ad)
+{
+	u32 bq_state = ad->bq_state[ad->bq_page];
+	u32 bq_idx;
+	bool direction;
+
+	if (!bq_state)
+		return NULL;
+
+	bq_idx = __ffs(bq_state);
+	direction = (bq_idx == 1) & ad->elv_direction;
+
+	return pop_bq_request(ad, bq_idx, direction);
+}
+
+static inline bool bq_page_has_rq(u32 bq_state, bool page)
+{
+	return bq_state & (1U << page);
+}
+
+/* Dispatch from batch queue */
 static struct request *dispatch_from_bq(struct adios_data *ad)
 {
-	struct request *rq = NULL;
+	struct request *rq;
 	unsigned long flags;
+	u32 state, bq_state, bq_curr_page_has_rq;
+	union adios_in_flight_rqs ifr;
 	u64 tpl;
-	u8 i;
+	bool page;
+	bool is_empty;
 
 	spin_lock_irqsave(&ad->bq_lock, flags);
-	tpl = atomic64_read(&ad->total_pred_lat);
 
-	if (!ad->more_bq_ready && (!tpl || tpl < div_u64(
-			ad->global_latency_window * ad->bq_refill_below_ratio, 100)))
+	state = get_adios_state(ad);
+	bq_state = eval_this_adios_state(state, ADIOS_STATE_BQ);
+	bq_curr_page_has_rq = bq_page_has_rq(bq_state, ad->bq_page);
+	ifr.scalar = atomic64_read(&ad->in_flight_rqs.atomic);
+	tpl = ifr.total_pred_lat;
+
+	if (!bq_page_has_rq(bq_state, !ad->bq_page) &&
+			(!bq_curr_page_has_rq || (!tpl || tpl < div_u64(
+			ad->global_latency_window * ad->bq_refill_below_ratio, 100))) &&
+			eval_this_adios_state(state, ADIOS_STATE_DL))
 		fill_batch_queues(ad, tpl);
 
-again:
-	/* Check if there are any requests in the batch queues */
-	for (i = 0; i < ADIOS_OPTYPES; i++) {
-		if (!list_empty(&ad->batch_queue[ad->bq_page][i])) {
-			rq = list_first_entry(
-				&ad->batch_queue[ad->bq_page][i], struct request, queuelist);
-			list_del_init(&rq->queuelist);
-			spin_unlock_irqrestore(&ad->bq_lock, flags);
-			return rq;
-		}
-	}
-
-	/* If there's more batch queue page available, flip to it and retry */
-	if (ad->more_bq_ready) {
+	if (!bq_curr_page_has_rq &&
+			bq_page_has_rq(eval_adios_state(ad, ADIOS_STATE_BQ), !ad->bq_page))
 		flip_bq_page(ad);
-		goto again;
+
+	rq = (ad->bq_batch_order[ad->bq_page] == ADIOS_BO_ELEVATOR) ?
+		pop_next_bq_request_elevator(ad) :
+		pop_next_bq_request_optype(ad);
+
+	if (rq) {
+		page = ad->bq_page;
+		is_empty = !ad->bq_state[page];
+		if (is_empty)
+			set_adios_state(ad, ADIOS_STATE_BQ, page, false);
+		spin_unlock_irqrestore(&ad->bq_lock, flags);
+		return rq;
 	}
 
 	spin_unlock_irqrestore(&ad->bq_lock, flags);
 	return NULL;
 }
 
-/* Dispatch a request from the priority queue */
+/* Dispatch from priority queue */
 static struct request *dispatch_from_pq(struct adios_data *ad)
 {
 	struct request *rq = NULL;
 	unsigned long flags;
+	u32 pq_state;
+	u8  pq_idx;
+	struct list_head *q;
 
 	spin_lock_irqsave(&ad->pq_lock, flags);
-	if (!list_empty(&ad->prio_queue)) {
-		rq = list_first_entry(&ad->prio_queue, struct request, queuelist);
-		list_del_init(&rq->queuelist);
+	pq_state = eval_adios_state(ad, ADIOS_STATE_PQ);
+	pq_idx = pq_state >> 1;
+	q = &ad->prio_queue[pq_idx];
+
+	if (unlikely(list_empty(q))) {
+		spin_unlock_irqrestore(&ad->pq_lock, flags);
+		return NULL;
+	}
+
+	rq = list_first_entry(q, struct request, queuelist);
+	list_del_init(&rq->queuelist);
+	if (list_empty(q)) {
+		set_adios_state(ad, ADIOS_STATE_PQ, pq_idx, false);
+		update_elv_direction(ad);
 	}
 	spin_unlock_irqrestore(&ad->pq_lock, flags);
-
 	return rq;
 }
 
-/* Dispatch a request to the hardware queue */
+/* Release barrier requests */
+static bool release_barrier_requests(struct adios_data *ad)
+{
+	u32 moved_count = 0;
+	unsigned long flags;
+	struct request *trq, *next;
+	bool first_barrier_moved = false;
+	LIST_HEAD(local_list);
+
+	spin_lock_irqsave(&ad->barrier_lock, flags);
+	if (!list_empty(&ad->barrier_queue)) {
+		list_for_each_entry_safe(trq, next, &ad->barrier_queue, queuelist) {
+			if (!first_barrier_moved) {
+				list_del_init(&trq->queuelist);
+				spin_unlock_irqrestore(&ad->barrier_lock, flags);
+				insert_to_prio_queue(ad, trq, 1);
+				spin_lock_irqsave(&ad->barrier_lock, flags);
+				moved_count++;
+				first_barrier_moved = true;
+				continue;
+			}
+
+			if (trq->cmd_flags & REQ_PREFLUSH)
+				break;
+
+			list_move_tail(&trq->queuelist, &local_list);
+			moved_count++;
+		}
+
+		if (list_empty(&ad->barrier_queue))
+			set_adios_state(ad, ADIOS_STATE_BP, 0, false);
+	}
+	spin_unlock_irqrestore(&ad->barrier_lock, flags);
+
+	if (!moved_count)
+		return false;
+
+	if (!list_empty(&local_list)) {
+		unsigned long lock_flags;
+
+		spin_lock_irqsave(&ad->lock, lock_flags);
+		list_for_each_entry_safe(trq, next, &local_list, queuelist) {
+			list_del_init(&trq->queuelist);
+			if (!blk_mq_sched_try_insert_merge(ad->queue, trq)) {
+				add_to_dl_tree(ad, adios_optype_not_read(trq), trq);
+				if (rq_mergeable(trq)) {
+					elv_rqhash_add(ad->queue, trq);
+					if (!ad->queue->last_merge)
+						ad->queue->last_merge = trq;
+				}
+			}
+		}
+		spin_unlock_irqrestore(&ad->lock, lock_flags);
+	}
+
+	return true;
+}
+
+/* Main dispatch function */
 static struct request *adios_dispatch_request(struct blk_mq_hw_ctx *hctx)
 {
 	struct adios_data *ad = hctx->queue->elevator->elevator_data;
 	struct request *rq;
 
+retry:
 	rq = dispatch_from_pq(ad);
 	if (rq)
 		goto found;
 
 	rq = dispatch_from_bq(ad);
-	if (!rq)
-		return NULL;
+	if (rq)
+		goto found;
+
+	if (eval_adios_state(ad, ADIOS_STATE_BP)) {
+		union adios_in_flight_rqs ifr;
+		ifr.scalar = atomic64_read(&ad->in_flight_rqs.atomic);
+		if (!ifr.count) {
+			unsigned long flags;
+			bool barrier_released = false;
+
+			spin_lock_irqsave(&ad->lock, flags);
+			barrier_released = release_barrier_requests(ad);
+			spin_unlock_irqrestore(&ad->lock, flags);
+			if (barrier_released)
+				goto retry;
+		}
+	}
+
+	return NULL;
 
 found:
+	if (ad->is_rotational)
+		ad->head_pos = blk_rq_pos(rq) + blk_rq_sectors(rq);
+
 	rq->rq_flags |= RQF_STARTED;
 	return rq;
 }
 
-/* Timer callback function to periodically update latency models */
+/* Timer callback */
 static void update_timer_callback(unsigned long data)
 {
 	struct adios_data *ad = (struct adios_data *)data;
@@ -908,153 +1288,133 @@ static void update_timer_callback(unsigned long data)
 		latency_model_update(ad, &ad->latency_model[optype]);
 }
 
-/* Handle the completion of a request */
+/* Request completion handler */
 static void adios_completed_request(struct request *rq)
 {
 	struct adios_data *ad = rq->q->elevator->elevator_data;
 	struct adios_rq_data *rd = get_rq_data(rq);
-	u64 now, latency;
+	union adios_in_flight_rqs ifr = { .scalar = 0 };
+	u64 now, lct, latency;
 	u8 optype;
+	u32 weight = 1;
 
 	if (!rd)
 		return;
 
-	atomic64_sub(rd->pred_lat, &ad->total_pred_lat);
-
-	if (!rd->block_size)
-		return;
-
-	now = ktime_get_ns();
-	latency = now - rd->deadline + ad->latency_target[adios_optype(rq)] + rd->pred_lat;
+	if (rd->managed) {
+		union adios_in_flight_rqs ifr_to_sub = {
+			.count          = 1,
+			.total_pred_lat = rd->pred_lat,
+		};
+		ifr.scalar = atomic64_sub_return(ifr_to_sub.scalar, &ad->in_flight_rqs.atomic);
+	}
 
 	optype = adios_optype(rq);
-	latency_model_input(ad, &ad->latency_model[optype],
-		rd->block_size, latency, rd->pred_lat);
 
+	if (optype == ADIOS_OTHER) {
+		if (ad->is_rotational)
+			ad->last_completed_pos = 0;
+		return;
+	}
+
+	now = ktime_get_ns();
+	lct = ad->last_completed_time ?: now;
+	ad->last_completed_time = (ifr.count) ? now : 0;
+
+	if (!rd->block_size || unlikely(now < lct))
+		return;
+
+	latency = now - lct;
+	if (latency > ad->lat_model_latency_limit)
+		return;
+
+	if (ad->is_rotational) {
+		sector_t current_pos = blk_rq_pos(rq);
+		if (ad->last_completed_pos > 0) {
+			u64 seek_distance = abs((s64)current_pos - (s64)ad->last_completed_pos);
+			weight = 65 - __fls(seek_distance);
+		}
+		ad->last_completed_pos = current_pos + blk_rq_sectors(rq);
+	}
+
+	latency_model_input(ad, &ad->latency_model[optype],
+		rd->block_size, latency, rd->pred_lat, weight);
 	mod_timer(&ad->update_timer, jiffies + msecs_to_jiffies(100));
 }
 
-/* Clean up after a request is finished */
+/* Finish request cleanup */
 static void adios_finish_request(struct request *rq)
 {
 	struct adios_data *ad = rq->q->elevator->elevator_data;
 
 	if (rq->elv.priv[0]) {
-		/* Free adios_rq_data back to the memory pool */
 		kmem_cache_free(ad->rq_data_pool, get_rq_data(rq));
 		rq->elv.priv[0] = NULL;
 	}
 }
 
-static inline bool pq_has_work(struct adios_data *ad)
-{
-	unsigned long flags;
-	bool ret;
-
-	spin_lock_irqsave(&ad->pq_lock, flags);
-	ret = !list_empty(&ad->prio_queue);
-	spin_unlock_irqrestore(&ad->pq_lock, flags);
-
-	return ret;
-}
-
-static inline bool bq_has_work(struct adios_data *ad)
-{
-	unsigned long flags;
-	bool ret = false;
-	u8 i;
-
-	spin_lock_irqsave(&ad->bq_lock, flags);
-	for (i = 0; i < ADIOS_OPTYPES; i++) {
-		if (!list_empty(&ad->batch_queue[ad->bq_page][i])) {
-			ret = true;
-			break;
-		}
-	}
-	if (!ret)
-		ret = ad->more_bq_ready;
-	spin_unlock_irqrestore(&ad->bq_lock, flags);
-
-	return ret;
-}
-
-static inline bool dl_tree_has_work(struct adios_data *ad)
-{
-	unsigned long flags;
-	bool ret;
-
-	spin_lock_irqsave(&ad->lock, flags);
-	ret = ad->dl_queued;
-	spin_unlock_irqrestore(&ad->lock, flags);
-
-	return ret;
-}
-
-/* Check if there are any requests available for dispatch */
+/* Check if work available */
 static bool adios_has_work(struct blk_mq_hw_ctx *hctx)
 {
 	struct adios_data *ad = hctx->queue->elevator->elevator_data;
 
-	return pq_has_work(ad) || bq_has_work(ad) || dl_tree_has_work(ad);
+	return atomic_read(&ad->state) != 0;
 }
 
-/* Initialize the scheduler-specific data for a hardware queue */
+/* Init hctx callback */
 static int adios_init_hctx(struct blk_mq_hw_ctx *hctx, unsigned int hctx_idx)
 {
 	adios_depth_updated(hctx);
 	return 0;
 }
 
-/* Initialize the scheduler-specific data when initializing the request queue */
+/* Initialize scheduler */
 static int adios_init_sched(struct request_queue *q, struct elevator_type *e)
 {
 	struct adios_data *ad;
 	struct elevator_queue *eq;
 	int ret = -ENOMEM;
+	u8 optype, page;
 	int i;
-	u8 page, optype;
 
 	eq = elevator_alloc(q, e);
 	if (!eq)
 		return ret;
 
 	ad = kzalloc_node(sizeof(*ad), GFP_KERNEL, q->node);
-	if (!ad)
+	if (!ad) {
+		pr_err("adios: Failed to create adios_data\n");
 		goto put_eq;
+	}
 
-	/* Create a memory pool for adios_rq_data */
 	ad->rq_data_pool = kmem_cache_create("adios_rq_data_pool",
-					     sizeof(struct adios_rq_data),
-					     0, SLAB_HWCACHE_ALIGN, NULL);
+						sizeof(struct adios_rq_data),
+						0, SLAB_HWCACHE_ALIGN, NULL);
 	if (!ad->rq_data_pool) {
 		pr_err("adios: Failed to create rq_data_pool\n");
 		goto free_ad;
 	}
 
-	/* Create a memory pool for dl_group */
 	ad->dl_group_pool = kmem_cache_create("adios_dl_group_pool",
-					      sizeof(struct dl_group),
-					      0, SLAB_HWCACHE_ALIGN, NULL);
+						sizeof(struct dl_group),
+						0, SLAB_HWCACHE_ALIGN, NULL);
 	if (!ad->dl_group_pool) {
 		pr_err("adios: Failed to create dl_group_pool\n");
 		goto destroy_rq_data_pool;
 	}
 
-	eq->elevator_data = ad;
+	for (i = 0; i < ADIOS_PQ_LEVELS; i++)
+		INIT_LIST_HEAD(&ad->prio_queue[i]);
 
-	ad->global_latency_window = default_global_latency_window;
-	ad->bq_refill_below_ratio = default_bq_refill_below_ratio;
-
-	INIT_LIST_HEAD(&ad->prio_queue);
-
-	for (i = 0; i < 2; i++)
+	for (i = 0; i < ADIOS_DL_TYPES; i++) {
 		ad->dl_tree[i] = RB_ROOT_CACHED;
-
-	ad->dl_bias = 0;
-	ad->dl_queued = 0x0;
-
-	for (i = 0; i < 2; i++)
 		ad->dl_prio[i] = default_dl_prio[i];
+	}
+	ad->dl_bias = 0;
+
+	for (page = 0; page < ADIOS_BQ_PAGES; page++)
+		for (optype = 0; optype < ADIOS_OPTYPES; optype++)
+			INIT_LIST_HEAD(&ad->batch_queue[page][optype]);
 
 	ad->aggr_buckets = kzalloc(sizeof(*ad->aggr_buckets), GFP_KERNEL);
 	if (!ad->aggr_buckets) {
@@ -1062,32 +1422,48 @@ static int adios_init_sched(struct request_queue *q, struct elevator_type *e)
 		goto destroy_dl_group_pool;
 	}
 
-	for (i = 0; i < ADIOS_OPTYPES; i++) {
-		struct latency_model *model = &ad->latency_model[i];
+	for (optype = 0; optype < ADIOS_OPTYPES; optype++) {
+		struct latency_model *model = &ad->latency_model[optype];
 
-		seqlock_init(&model->lock);
-		model->pcpu_buckets = alloc_percpu(struct per_cpu_lm_buckets);
-		if (!model->pcpu_buckets)
+		spin_lock_init(&model->update_lock);
+
+		model->pcpu_buckets = alloc_percpu(struct lm_buckets);
+		if (!model->pcpu_buckets) {
+			pr_err("adios: Failed to allocate per-CPU buckets\n");
 			goto free_buckets;
+		}
 
 		model->last_update_jiffies = jiffies;
 		model->lm_shrink_at_kreqs  = default_lm_shrink_at_kreqs;
 		model->lm_shrink_at_gbytes = default_lm_shrink_at_gbytes;
 		model->lm_shrink_resist    = default_lm_shrink_resist;
-
-		ad->latency_target[i] = default_latency_target[i];
-		ad->batch_limit[i] = default_batch_limit[i];
 	}
 
-	setup_timer(&ad->update_timer, update_timer_callback, (unsigned long)ad);
+	for (optype = 0; optype < ADIOS_OPTYPES; optype++) {
+		ad->latency_target[optype] = default_latency_target[optype];
+		ad->batch_limit[optype] = default_batch_limit[optype];
+	}
 
-	for (page = 0; page < ADIOS_BQ_PAGES; page++)
-		for (optype = 0; optype < ADIOS_OPTYPES; optype++)
-			INIT_LIST_HEAD(&ad->batch_queue[page][optype]);
+	eq->elevator_data = ad;
+
+	ad->is_rotational = !blk_queue_nonrot(q);
+	ad->global_latency_window = (ad->is_rotational) ?
+		default_global_latency_window_rotational :
+		default_global_latency_window;
+	ad->bq_refill_below_ratio = default_bq_refill_below_ratio;
+	ad->lat_model_latency_limit = default_lat_model_latency_limit;
+	ad->batch_order = default_batch_order;
+	ad->compliance_flags = default_compliance_flags;
+
+	atomic_set(&ad->state, 0);
 
 	spin_lock_init(&ad->lock);
 	spin_lock_init(&ad->pq_lock);
 	spin_lock_init(&ad->bq_lock);
+	spin_lock_init(&ad->barrier_lock);
+	INIT_LIST_HEAD(&ad->barrier_queue);
+
+	setup_timer(&ad->update_timer, update_timer_callback, (unsigned long)ad);
 
 	ad->queue = q;
 
@@ -1095,9 +1471,8 @@ static int adios_init_sched(struct request_queue *q, struct elevator_type *e)
 	return 0;
 
 free_buckets:
-	pr_err("adios: Failed to allocate per-cpu buckets\n");
-	while (--i >= 0) {
-		struct latency_model *prev_model = &ad->latency_model[i];
+	while (optype-- > 0) {
+		struct latency_model *prev_model = &ad->latency_model[optype];
 		free_percpu(prev_model->pcpu_buckets);
 	}
 	kfree(ad->aggr_buckets);
@@ -1112,7 +1487,7 @@ put_eq:
 	return ret;
 }
 
-/* Clean up and free resources when exiting the scheduler */
+/* Exit scheduler */
 static void adios_exit_sched(struct elevator_queue *e)
 {
 	struct adios_data *ad = e->elevator_data;
@@ -1120,7 +1495,9 @@ static void adios_exit_sched(struct elevator_queue *e)
 
 	del_timer_sync(&ad->update_timer);
 
-	WARN_ON_ONCE(!list_empty(&ad->prio_queue));
+	WARN_ON_ONCE(!list_empty(&ad->barrier_queue));
+	for (i = 0; i < 2; i++)
+		WARN_ON_ONCE(!list_empty(&ad->prio_queue[i]));
 
 	for (i = 0; i < ADIOS_OPTYPES; i++) {
 		struct latency_model *model = &ad->latency_model[i];
@@ -1131,147 +1508,119 @@ static void adios_exit_sched(struct elevator_queue *e)
 
 	if (ad->rq_data_pool)
 		kmem_cache_destroy(ad->rq_data_pool);
+
 	if (ad->dl_group_pool)
 		kmem_cache_destroy(ad->dl_group_pool);
 
 	kfree(ad);
 }
 
-/* Define sysfs attributes for read operation latency model */
-#define SYSFS_OPTYPE_DECL(name, optype)						\
-static ssize_t adios_lat_model_##name##_show(					\
-		struct elevator_queue *e, char *page)				\
-{										\
-	struct adios_data *ad = e->elevator_data;				\
-	struct latency_model *model = &ad->latency_model[optype];		\
-	ssize_t len = 0;							\
-	u64 base, slope;							\
-	unsigned int seq;							\
-	do {									\
-		seq = read_seqbegin(&model->lock);				\
-		base = model->base;						\
-		slope = model->slope;						\
-	} while (read_seqretry(&model->lock, seq));				\
-	len += sprintf(page,       "base : %llu ns\n", base);			\
-	len += sprintf(page + len, "slope: %llu ns/KiB\n", slope);		\
-	return len;								\
-}										\
-static ssize_t adios_lat_target_##name##_store(					\
-		struct elevator_queue *e, const char *page, size_t count)	\
-{										\
-	struct adios_data *ad = e->elevator_data;				\
-	unsigned long nsec;							\
-	int ret;								\
-	ret = kstrtoul(page, 10, &nsec);					\
-	if (ret)								\
-		return ret;							\
-	ad->latency_model[optype].base = 0ULL;					\
-	ad->latency_target[optype] = nsec;					\
-	return count;								\
-}										\
-static ssize_t adios_lat_target_##name##_show(					\
-		struct elevator_queue *e, char *page)				\
-{										\
-	struct adios_data *ad = e->elevator_data;				\
-	return sprintf(page, "%llu\n", ad->latency_target[optype]);		\
-}										\
-static ssize_t adios_batch_limit_##name##_store(				\
-		struct elevator_queue *e, const char *page, size_t count)	\
-{										\
-	struct adios_data *ad = e->elevator_data;				\
-	unsigned long max_batch;						\
-	int ret;								\
-	ret = kstrtoul(page, 10, &max_batch);					\
-	if (ret || max_batch == 0)						\
-		return -EINVAL;							\
-	ad->batch_limit[optype] = max_batch;					\
-	return count;								\
-}										\
-static ssize_t adios_batch_limit_##name##_show(					\
-		struct elevator_queue *e, char *page)				\
-{										\
-	struct adios_data *ad = e->elevator_data;				\
-	return sprintf(page, "%u\n", ad->batch_limit[optype]);			\
+/* Sysfs attributes */
+#define SYSFS_OPTYPE_DECL(name, optype) \
+static ssize_t adios_lat_model_##name##_show( \
+		struct elevator_queue *e, char *page) { \
+	struct adios_data *ad = e->elevator_data; \
+	struct latency_model *model = &ad->latency_model[optype]; \
+	ssize_t len = 0; \
+	len += sprintf(page,       "base : %llu ns\n", model->base); \
+	len += sprintf(page + len, "slope: %llu ns/KiB\n", model->slope); \
+	return len; \
+} \
+static ssize_t adios_lat_target_##name##_show( \
+		struct elevator_queue *e, char *page) { \
+	struct adios_data *ad = e->elevator_data; \
+	return sprintf(page, "%llu\n", ad->latency_target[optype]); \
+} \
+static ssize_t adios_lat_target_##name##_store( \
+		struct elevator_queue *e, const char *page, size_t count) { \
+	struct adios_data *ad = e->elevator_data; \
+	unsigned long nsec; \
+	int ret; \
+	ret = kstrtoul(page, 10, &nsec); \
+	if (ret) \
+		return ret; \
+	ad->latency_model[optype].base = 0ULL; \
+	ad->latency_target[optype] = nsec; \
+	return count; \
+} \
+static ssize_t adios_batch_limit_##name##_show( \
+		struct elevator_queue *e, char *page) { \
+	struct adios_data *ad = e->elevator_data; \
+	return sprintf(page, "%u\n", ad->batch_limit[optype]); \
+} \
+static ssize_t adios_batch_limit_##name##_store( \
+		struct elevator_queue *e, const char *page, size_t count) { \
+	unsigned long max_batch; \
+	int ret; \
+	struct adios_data *ad = e->elevator_data; \
+	ret = kstrtoul(page, 10, &max_batch); \
+	if (ret || max_batch == 0) \
+		return -EINVAL; \
+	ad->batch_limit[optype] = max_batch; \
+	return count; \
 }
 
-SYSFS_OPTYPE_DECL(read, ADIOS_READ)
-SYSFS_OPTYPE_DECL(write, ADIOS_WRITE)
-SYSFS_OPTYPE_DECL(discard, ADIOS_DISCARD)
+SYSFS_OPTYPE_DECL(read, ADIOS_READ);
+SYSFS_OPTYPE_DECL(write, ADIOS_WRITE);
+SYSFS_OPTYPE_DECL(discard, ADIOS_DISCARD);
 
-/* Show the maximum batch size actually achieved for each operation type */
 static ssize_t adios_batch_actual_max_show(struct elevator_queue *e, char *page)
 {
 	struct adios_data *ad = e->elevator_data;
-	u32 total_count, read_count, write_count, discard_count;
-
-	total_count = ad->batch_actual_max_total;
-	read_count = ad->batch_actual_max_size[ADIOS_READ];
-	write_count = ad->batch_actual_max_size[ADIOS_WRITE];
-	discard_count = ad->batch_actual_max_size[ADIOS_DISCARD];
-
 	return sprintf(page,
 		"Total  : %u\nDiscard: %u\nRead   : %u\nWrite  : %u\n",
-		total_count, discard_count, read_count, write_count);
+		ad->batch_actual_max_total,
+		ad->batch_actual_max_size[ADIOS_DISCARD],
+		ad->batch_actual_max_size[ADIOS_READ],
+		ad->batch_actual_max_size[ADIOS_WRITE]);
 }
 
-/* Set the global latency window */
-static ssize_t adios_global_latency_window_store(
-		struct elevator_queue *e, const char *page, size_t count)
-{
-	struct adios_data *ad = e->elevator_data;
-	unsigned long nsec;
-	int ret;
-
-	ret = kstrtoul(page, 10, &nsec);
-	if (ret)
-		return ret;
-
-	ad->global_latency_window = nsec;
-	return count;
-}
-
-/* Show the global latency window */
-static ssize_t adios_global_latency_window_show(
-		struct elevator_queue *e, char *page)
+static ssize_t adios_global_latency_window_show(struct elevator_queue *e, char *page)
 {
 	struct adios_data *ad = e->elevator_data;
 	return sprintf(page, "%llu\n", ad->global_latency_window);
 }
 
-/* Show the bq_refill_below_ratio */
-static ssize_t adios_bq_refill_below_ratio_show(
-		struct elevator_queue *e, char *page)
+static ssize_t adios_global_latency_window_store(struct elevator_queue *e,
+		const char *page, size_t count)
+{
+	struct adios_data *ad = e->elevator_data;
+	unsigned long val;
+	int ret;
+	ret = kstrtoul(page, 10, &val);
+	if (ret)
+		return -EINVAL;
+	ad->global_latency_window = val;
+	return count;
+}
+
+static ssize_t adios_bq_refill_below_ratio_show(struct elevator_queue *e, char *page)
 {
 	struct adios_data *ad = e->elevator_data;
 	return sprintf(page, "%d\n", ad->bq_refill_below_ratio);
 }
 
-/* Set the bq_refill_below_ratio */
-static ssize_t adios_bq_refill_below_ratio_store(
-		struct elevator_queue *e, const char *page, size_t count)
+static ssize_t adios_bq_refill_below_ratio_store(struct elevator_queue *e,
+		const char *page, size_t count)
 {
 	struct adios_data *ad = e->elevator_data;
-	int ratio;
+	int val;
 	int ret;
-
-	ret = kstrtoint(page, 10, &ratio);
-	if (ret || ratio < 0 || ratio > 100)
+	ret = kstrtoint(page, 10, &val);
+	if (ret || val < 0 || val > 100)
 		return -EINVAL;
-
-	ad->bq_refill_below_ratio = ratio;
+	ad->bq_refill_below_ratio = val;
 	return count;
 }
 
-/* Show the read priority */
 static ssize_t adios_read_priority_show(struct elevator_queue *e, char *page)
 {
 	struct adios_data *ad = e->elevator_data;
 	return sprintf(page, "%d\n", ad->dl_prio[0]);
 }
 
-/* Set the read priority */
-static ssize_t adios_read_priority_store(
-		struct elevator_queue *e, const char *page, size_t count)
+static ssize_t adios_read_priority_store(struct elevator_queue *e,
+		const char *page, size_t count)
 {
 	struct adios_data *ad = e->elevator_data;
 	unsigned long flags;
@@ -1290,9 +1639,8 @@ static ssize_t adios_read_priority_store(
 	return count;
 }
 
-/* Reset batch queue statistics */
-static ssize_t adios_reset_bq_stats_store(
-		struct elevator_queue *e, const char *page, size_t count)
+static ssize_t adios_reset_bq_stats_store(struct elevator_queue *e,
+		const char *page, size_t count)
 {
 	struct adios_data *ad = e->elevator_data;
 	unsigned long val;
@@ -1310,9 +1658,8 @@ static ssize_t adios_reset_bq_stats_store(
 	return count;
 }
 
-/* Reset the latency model parameters */
-static ssize_t adios_reset_lat_model_store(
-		struct elevator_queue *e, const char *page, size_t count)
+static ssize_t adios_reset_lat_model_store(struct elevator_queue *e,
+		const char *page, size_t count)
 {
 	struct adios_data *ad = e->elevator_data;
 	unsigned long val;
@@ -1325,78 +1672,37 @@ static ssize_t adios_reset_lat_model_store(
 
 	for (i = 0; i < ADIOS_OPTYPES; i++) {
 		struct latency_model *model = &ad->latency_model[i];
+		unsigned long flags;
 
-		write_seqlock_bh(&model->lock);
+		spin_lock_irqsave(&model->update_lock, flags);
 		model->base = 0ULL;
 		model->slope = 0ULL;
 		model->small_sum_delay = 0ULL;
 		model->small_count = 0ULL;
 		model->large_sum_delay = 0ULL;
 		model->large_sum_bsize = 0ULL;
-		write_sequnlock_bh(&model->lock);
+		lm_reset_pcpu_buckets(model);
+		spin_unlock_irqrestore(&model->update_lock, flags);
 	}
+	reset_buckets(ad->aggr_buckets);
 
 	return count;
 }
 
-/* Show the ADIOS version */
 static ssize_t adios_version_show(struct elevator_queue *e, char *page)
 {
 	return sprintf(page, "%s\n", ADIOS_VERSION);
 }
 
-/* Define sysfs attributes for dynamic thresholds */
-#define SHRINK_THRESHOLD_ATTR_RW(name, model_field, min_value, max_value)	\
-static ssize_t adios_shrink_##name##_store(					\
-		struct elevator_queue *e, const char *page, size_t count)	\
-{										\
-	struct adios_data *ad = e->elevator_data;				\
-	unsigned long val;							\
-	u8 i;									\
-	int ret;								\
-	ret = kstrtoul(page, 10, &val);						\
-	if (ret || val < min_value || val > max_value)				\
-		return -EINVAL;							\
-	for (i = 0; i < ADIOS_OPTYPES; i++) {					\
-		struct latency_model *model = &ad->latency_model[i];		\
-		write_seqlock_bh(&model->lock);					\
-		model->model_field = val;					\
-		write_sequnlock_bh(&model->lock);				\
-	}									\
-	return count;								\
-}										\
-static ssize_t adios_shrink_##name##_show(					\
-		struct elevator_queue *e, char *page)				\
-{										\
-	struct adios_data *ad = e->elevator_data;				\
-	u32 val = 0;								\
-	unsigned int seq;							\
-	struct latency_model *model = &ad->latency_model[0];			\
-	do {									\
-		seq = read_seqbegin(&model->lock);				\
-		val = model->model_field;					\
-	} while (read_seqretry(&model->lock, seq));				\
-	return sprintf(page, "%u\n", val);					\
-}
-
-SHRINK_THRESHOLD_ATTR_RW(at_kreqs,  lm_shrink_at_kreqs,  1, 100000)
-SHRINK_THRESHOLD_ATTR_RW(at_gbytes, lm_shrink_at_gbytes, 1,   1000)
-SHRINK_THRESHOLD_ATTR_RW(resist,    lm_shrink_resist,    1,      3)
-
-/* Define sysfs attributes */
 #define AD_ATTR(name, show_func, store_func) \
 	__ATTR(name, 0644, show_func, store_func)
-
 #define AD_ATTR_RW(name) \
 	__ATTR(name, 0644, adios_##name##_show, adios_##name##_store)
-
 #define AD_ATTR_RO(name) \
 	__ATTR(name, 0444, adios_##name##_show, NULL)
-
 #define AD_ATTR_WO(name) \
 	__ATTR(name, 0200, NULL, adios_##name##_store)
 
-/* Define sysfs attributes for ADIOS scheduler */
 static struct elv_fs_entry adios_sched_attrs[] = {
 	AD_ATTR_RO(batch_actual_max),
 	AD_ATTR_RW(bq_refill_below_ratio),
@@ -1410,9 +1716,6 @@ static struct elv_fs_entry adios_sched_attrs[] = {
 	AD_ATTR_RW(lat_target_read),
 	AD_ATTR_RW(lat_target_write),
 	AD_ATTR_RW(lat_target_discard),
-	AD_ATTR_RW(shrink_at_kreqs),
-	AD_ATTR_RW(shrink_at_gbytes),
-	AD_ATTR_RW(shrink_resist),
 	AD_ATTR_RW(read_priority),
 	AD_ATTR_WO(reset_bq_stats),
 	AD_ATTR_WO(reset_lat_model),
@@ -1420,7 +1723,6 @@ static struct elv_fs_entry adios_sched_attrs[] = {
 	__ATTR_NULL
 };
 
-/* Define the ADIOS scheduler type */
 static struct elevator_type mq_adios = {
 	.ops.mq = {
 		.init_sched		= adios_init_sched,
@@ -1449,7 +1751,6 @@ MODULE_ALIAS("mq-adios-iosched");
 #define ADIOS_PROGNAME "Adaptive Deadline I/O Scheduler"
 #define ADIOS_AUTHOR   "Masahito Suzuki"
 
-/* Initialize the ADIOS scheduler module */
 static int __init adios_init(void)
 {
 	pr_info("%s %s by %s (backported to 4.14)\n",
@@ -1457,7 +1758,6 @@ static int __init adios_init(void)
 	return elv_register(&mq_adios);
 }
 
-/* Exit the ADIOS scheduler module */
 static void __exit adios_exit(void)
 {
 	elv_unregister(&mq_adios);
