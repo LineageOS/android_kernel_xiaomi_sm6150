@@ -27,6 +27,7 @@
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
+#include <linux/workqueue.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -1366,6 +1367,12 @@ struct task_struct {
 	/* A live task holds one reference: */
 	atomic_t			stack_refcount;
 #endif
+	/* Async task free support */
+	struct {
+		struct work_struct	work;
+		atomic_t		running;
+		bool			free_stack;
+	} async_free;
 #ifdef CONFIG_LIVEPATCH
 	int patch_state;
 #endif

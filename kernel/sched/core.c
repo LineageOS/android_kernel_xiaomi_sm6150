@@ -2855,6 +2855,37 @@ fire_sched_out_preempt_notifiers(struct task_struct *curr,
 
 #endif /* CONFIG_PREEMPT_NOTIFIERS */
 
+void release_task_stack(struct task_struct *tsk);
+
+static void task_async_free(struct work_struct *work)
+{
+	struct task_struct *p = container_of(work, typeof(*p), async_free.work);
+
+	if (p->async_free.free_stack)
+		release_task_stack(p);
+	put_task_struct(p);
+	/* Signal that we've fully freed the task so exit() can proceed */
+	atomic_set(&p->async_free.running, 0);
+}
+
+static void finish_task_switch_dead(struct task_struct *prev)
+{
+	/* Initialize the work if it isn't already */
+	if (!prev->async_free.work.func)
+		INIT_WORK(&prev->async_free.work, task_async_free);
+
+	/*
+	 * Save whether or not we need to release the task stack as a bool, so
+	 * we can check this outside of the scheduler.
+	 */
+	prev->async_free.free_stack =
+		atomic_dec_and_test(&prev->stack_refcount);
+
+	/* Signal that this is running and start the async work */
+	atomic_set(&prev->async_free.running, 1);
+	queue_work(system_unbound_wq, &prev->async_free.work);
+}
+
 /**
  * prepare_task_switch - prepare to switch tasks
  * @rq: the runqueue preparing to switch
@@ -2955,21 +2986,18 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	fire_sched_in_preempt_notifiers(current);
 	if (mm)
 		mmdrop(mm);
-	if (unlikely(prev_state  == TASK_DEAD)) {
-			if (prev->sched_class->task_dead)
-				prev->sched_class->task_dead(prev);
+	if (unlikely(prev_state == TASK_DEAD)) {
+		if (prev->sched_class->task_dead)
+			prev->sched_class->task_dead(prev);
 
-			/*
-			 * Remove function-return probe instances associated with this
-			 * task and put them back on the free list.
-			 */
-			kprobe_flush_task(prev);
+		/*
+		 * Remove function-return probe instances associated with this
+		 * task and put them back on the free list.
+		 */
+		kprobe_flush_task(prev);
 
-			/* Task is done with its stack. */
-			put_task_stack(prev);
-
-			put_task_struct(prev);
-
+		/* Task is done with its stack. */
+		finish_task_switch_dead(prev);
 	}
 
 	tick_nohz_task_switch();
