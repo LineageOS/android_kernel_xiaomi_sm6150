@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2019-2023 Sultan Alsawaf <sultan@kerneltoast.com>.
+ *
+ * ARM64 optimizations by Miguel (2025).
  */
 
 #define pr_fmt(fmt) "simple_lmk: " fmt
@@ -11,6 +13,7 @@
 #include <linux/mmu_notifier.h>
 #include <linux/moduleparam.h>
 #include <linux/oom.h>
+#include <linux/prefetch.h>
 #include <linux/ratelimit.h>
 #include <linux/sched/mm.h>
 #include <linux/sort.h>
@@ -26,14 +29,25 @@
 /* Timeout in jiffies for each reclaim */
 #define RECLAIM_EXPIRES msecs_to_jiffies(CONFIG_ANDROID_SIMPLE_LMK_TIMEOUT_MSEC)
 
+/*
+ * Maximum oom_score_adj value in Android. Typically 0-1000, but we use 1024
+ * for safety. This saves ~248KB vs SHRT_MAX (32768 entries).
+ */
+#define MAX_OOM_SCORE_ADJ 1024
+
+/*
+ * victim_info structure optimized for ARM64 cache lines (64 bytes).
+ * Padded to 32 bytes = exactly 2 structs per cache line.
+ */
 struct victim_info {
-	struct task_struct *tsk;
-	struct mm_struct *mm;
-	unsigned long size;
-};
+	struct task_struct *tsk;	/* 8 bytes */
+	struct mm_struct *mm;		/* 8 bytes */
+	unsigned long size;		/* 8 bytes */
+	unsigned long __pad;		/* 8 bytes - padding for 32-byte alignment */
+} __aligned(32);
 
 static struct victim_info victims[MAX_VICTIMS] __cacheline_aligned_in_smp;
-static struct task_struct *task_bucket[SHRT_MAX + 1] __cacheline_aligned;
+static struct task_struct *task_bucket[MAX_OOM_SCORE_ADJ + 1] __cacheline_aligned;
 static DECLARE_WAIT_QUEUE_HEAD(oom_waitq);
 static DECLARE_WAIT_QUEUE_HEAD(reaper_waitq);
 static DECLARE_COMPLETION(reclaim_done);
@@ -44,12 +58,21 @@ static atomic_t needs_reclaim = ATOMIC_INIT(0);
 static atomic_t needs_reap = ATOMIC_INIT(0);
 static atomic_t nr_killed = ATOMIC_INIT(0);
 
+/*
+ * Compare victims by size (descending order).
+ * Uses safe comparison to avoid overflow with large unsigned long values.
+ */
 static int victim_cmp(const void *lhs_ptr, const void *rhs_ptr)
 {
 	const struct victim_info *lhs = (typeof(lhs))lhs_ptr;
 	const struct victim_info *rhs = (typeof(rhs))rhs_ptr;
 
-	return rhs->size - lhs->size;
+	/* Safe comparison: avoid overflow from unsigned subtraction */
+	if (rhs->size > lhs->size)
+		return 1;
+	if (rhs->size < lhs->size)
+		return -1;
+	return 0;
 }
 
 static void victim_swap(void *lhs_ptr, void *rhs_ptr, int size)
@@ -73,7 +96,7 @@ static unsigned long get_total_mm_pages(struct mm_struct *mm)
 
 static unsigned long find_victims(int *vindex)
 {
-	short i, min_adj = SHRT_MAX, max_adj = 0;
+	int i, min_adj = MAX_OOM_SCORE_ADJ, max_adj = 0;
 	unsigned long pages_found = 0;
 	struct task_struct *tsk;
 
@@ -96,6 +119,13 @@ static unsigned long find_victims(int *vindex)
 		    sig->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP) ||
 		    (thread_group_empty(tsk) && tsk->flags & PF_EXITING))
 			continue;
+
+		/* Clamp adj to our bucket array size */
+		if (unlikely(adj > MAX_OOM_SCORE_ADJ))
+			adj = MAX_OOM_SCORE_ADJ;
+
+		/* Prefetch next task for better cache utilization */
+		prefetch(tsk->tasks.next);
 
 		/* Store the task in a linked-list bucket based on its adj */
 		tsk->simple_lmk_next = task_bucket[adj];
@@ -146,11 +176,10 @@ static unsigned long find_victims(int *vindex)
 			continue;
 
 		/*
-		 * Sort the victims in descending order of size to prioritize
-		 * killing the larger ones first.
+		 * Note: We skip per-bucket sorting here. The global sort in
+		 * scan_and_kill() will handle ordering by size. This reduces
+		 * CPU cycles in the critical reclaim path.
 		 */
-		sort(&victims[old_vindex], *vindex - old_vindex,
-		     sizeof(*victims), victim_cmp, victim_swap);
 
 		/* Stop when we are out of space or have enough pages found */
 		if (*vindex == MAX_VICTIMS || pages_found >= MIN_FREE_PAGES) {
@@ -237,7 +266,13 @@ static void scan_and_kill(void)
 		/* Second round of processing to finally select the victims */
 		nr_to_kill = process_victims(nr_to_kill);
 	} else {
-		/* Too few pages found, so all the victims need to be killed */
+		/*
+		 * Too few pages found, so all the victims need to be killed.
+		 * Sort by size to kill larger processes first for faster
+		 * memory reclaim.
+		 */
+		sort(victims, nr_found, sizeof(*victims), victim_cmp,
+		     victim_swap);
 		nr_to_kill = nr_found;
 	}
 
