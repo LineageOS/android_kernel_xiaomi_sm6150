@@ -270,20 +270,34 @@ void sbitmap_bitmap_show(struct sbitmap *sb, struct seq_file *m)
 }
 EXPORT_SYMBOL_GPL(sbitmap_bitmap_show);
 
-static unsigned int sbq_calc_wake_batch(unsigned int depth)
+static unsigned int sbq_calc_wake_batch(struct sbitmap_queue *sbq,
+					unsigned int depth)
 {
 	unsigned int wake_batch;
+	unsigned int min_depth = min(depth, sbq->min_shallow_depth);
 
 	/*
 	 * For each batch, we wake up one queue. We need to make sure that our
 	 * batch size is small enough that the full depth of the bitmap is
 	 * enough to wake up all of the queues.
+	 *
+	 * Use the minimum of depth and min_shallow_depth to ensure proper
+	 * wakeup batching when shallow allocation is used.
 	 */
 	wake_batch = SBQ_WAKE_BATCH;
-	if (wake_batch > depth / SBQ_WAIT_QUEUES)
-		wake_batch = max(1U, depth / SBQ_WAIT_QUEUES);
+	if (wake_batch > min_depth / SBQ_WAIT_QUEUES)
+		wake_batch = max(1U, min_depth / SBQ_WAIT_QUEUES);
 
 	return wake_batch;
+}
+
+static void sbitmap_queue_update_wake_batch(struct sbitmap_queue *sbq,
+					    unsigned int depth)
+{
+	unsigned int wake_batch = sbq_calc_wake_batch(sbq, depth);
+
+	if (sbq->wake_batch != wake_batch)
+		WRITE_ONCE(sbq->wake_batch, wake_batch);
 }
 
 int sbitmap_queue_init_node(struct sbitmap_queue *sbq, unsigned int depth,
@@ -307,7 +321,8 @@ int sbitmap_queue_init_node(struct sbitmap_queue *sbq, unsigned int depth,
 			*per_cpu_ptr(sbq->alloc_hint, i) = prandom_u32() % depth;
 	}
 
-	sbq->wake_batch = sbq_calc_wake_batch(depth);
+	sbq->min_shallow_depth = UINT_MAX;
+	sbq->wake_batch = sbq_calc_wake_batch(sbq, depth);
 	atomic_set(&sbq->wake_index, 0);
 
 	sbq->ws = kzalloc_node(SBQ_WAIT_QUEUES * sizeof(*sbq->ws), flags, node);
@@ -329,7 +344,7 @@ EXPORT_SYMBOL_GPL(sbitmap_queue_init_node);
 
 void sbitmap_queue_resize(struct sbitmap_queue *sbq, unsigned int depth)
 {
-	unsigned int wake_batch = sbq_calc_wake_batch(depth);
+	unsigned int wake_batch = sbq_calc_wake_batch(sbq, depth);
 	int i;
 
 	if (sbq->wake_batch != wake_batch) {
@@ -528,5 +543,28 @@ void sbitmap_queue_show(struct sbitmap_queue *sbq, struct seq_file *m)
 	seq_puts(m, "}\n");
 
 	seq_printf(m, "round_robin=%d\n", sbq->round_robin);
+	seq_printf(m, "min_shallow_depth=%u\n", sbq->min_shallow_depth);
 }
 EXPORT_SYMBOL_GPL(sbitmap_queue_show);
+
+/**
+ * sbitmap_queue_min_shallow_depth() - Inform a &struct sbitmap_queue of the
+ * minimum shallow depth that will be used.
+ * @sbq: Bitmap queue to configure.
+ * @min_shallow_depth: The minimum shallow depth that will be passed to
+ *                     sbitmap_queue_get_shallow() or __sbitmap_queue_get_shallow().
+ *
+ * sbitmap_queue_clear() batches wakeups as an optimization. The batch size
+ * depends on the depth of the bitmap. Since the shallow allocation functions
+ * effectively operate with a different depth, the shallow depth must be taken
+ * into account when calculating the batch size. This function must be called
+ * with the minimum shallow depth that will be used. Failure to do so can result
+ * in missed wakeups.
+ */
+void sbitmap_queue_min_shallow_depth(struct sbitmap_queue *sbq,
+				     unsigned int min_shallow_depth)
+{
+	sbq->min_shallow_depth = min_shallow_depth;
+	sbitmap_queue_update_wake_batch(sbq, sbq->sb.depth);
+}
+EXPORT_SYMBOL_GPL(sbitmap_queue_min_shallow_depth);

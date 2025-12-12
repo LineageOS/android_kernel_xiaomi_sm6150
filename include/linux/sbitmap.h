@@ -127,6 +127,12 @@ struct sbitmap_queue {
 	 * @round_robin: Allocate bits in strict round-robin order.
 	 */
 	bool round_robin;
+
+	/**
+	 * @min_shallow_depth: The minimum shallow depth which may be passed
+	 * to sbitmap_queue_get_shallow() or __sbitmap_queue_get_shallow().
+	 */
+	unsigned int min_shallow_depth;
 };
 
 /**
@@ -454,5 +460,22 @@ void sbitmap_queue_wake_all(struct sbitmap_queue *sbq);
  * This is intended for debugging. The format may change at any time.
  */
 void sbitmap_queue_show(struct sbitmap_queue *sbq, struct seq_file *m);
+
+/**
+ * sbitmap_queue_min_shallow_depth() - Inform a &struct sbitmap_queue of the
+ * minimum shallow depth that will be used.
+ * @sbq: Bitmap queue to configure.
+ * @min_shallow_depth: The minimum shallow depth that will be passed to
+ *                     sbitmap_queue_get_shallow() or __sbitmap_queue_get_shallow().
+ *
+ * sbitmap_queue_clear() batches wakeups as an optimization. The batch size
+ * depends on the depth of the bitmap. Since the shallow allocation functions
+ * effectively operate with a different depth, the shallow depth must be taken
+ * into account when calculating the batch size. This function must be called
+ * with the minimum shallow depth that will be used. Failure to do so can result
+ * in missed wakeups.
+ */
+void sbitmap_queue_min_shallow_depth(struct sbitmap_queue *sbq,
+				     unsigned int min_shallow_depth);
 
 #endif /* __LINUX_SCALE_BITMAP_H */

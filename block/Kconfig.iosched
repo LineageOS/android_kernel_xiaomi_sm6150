@@ -108,6 +108,16 @@ config BFQ_GROUP_IOSCHED
        Enable hierarchical scheduling in BFQ, using the blkio
        (cgroups-v1) or io (cgroups-v2) controller.
 
+config MQ_IOSCHED_ADIOS
+	tristate "Adaptive Deadline I/O scheduler"
+	default y
+	---help---
+	  The Adaptive Deadline I/O Scheduler (ADIOS) is a multi-queue I/O
+	  scheduler with learning-based adaptive latency control. It uses
+	  a latency model to predict request completion times and batch
+	  requests intelligently for optimal performance. Ideal for modern
+	  storage devices like NVMe SSDs and UFS storage.
+
 endmenu
 
 endif
