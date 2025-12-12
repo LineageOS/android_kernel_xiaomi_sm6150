@@ -127,6 +127,16 @@ void devfreq_register_boost_device(enum df_device device, struct devfreq *df)
 	WRITE_ONCE(b->df, df);
 }
 
+struct devfreq *devfreq_boost_get_device(enum df_device device)
+{
+	struct df_boost_drv *d = &df_boost_drv_g;
+
+	if (device >= DEVFREQ_MAX)
+		return NULL;
+
+	return READ_ONCE(d->devices[device].df);
+}
+
 static void devfreq_input_unboost(struct work_struct *work)
 {
 	struct boost_dev *b = container_of(to_delayed_work(work), typeof(*b),

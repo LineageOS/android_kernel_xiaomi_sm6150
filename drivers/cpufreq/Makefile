@@ -22,6 +22,9 @@ obj-$(CONFIG_CPU_BOOST)			+= cpu-boost.o
 # CPU Input Boost
 obj-$(CONFIG_CPU_INPUT_BOOST)		+= cpu_input_boost.o
 
+# SM6150 Performance Monitor
+obj-$(CONFIG_SM6150_PERFMON)		+= sm6150_perfmon.o
+
 obj-$(CONFIG_CPUFREQ_DT)		+= cpufreq-dt.o
 obj-$(CONFIG_CPUFREQ_DT_PLATDEV)	+= cpufreq-dt-platdev.o
 

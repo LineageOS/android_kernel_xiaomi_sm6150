@@ -300,6 +300,22 @@ config MAX_BOOST_FREQ_PERF
 
 endif
 
+config SM6150_PERFMON
+	bool "SM6150 Performance Monitor"
+	depends on ARCH_QCOM && SCHED_WALT
+	default n
+	help
+	  Performance monitor for Qualcomm SM6150 (Snapdragon 730G) that
+	  provides:
+	  - Real CPU frequency measurement via WALT cycle counters
+	  - freq_scale updates based on measured (not requested) frequency
+	  - Hardware throttle detection when measured freq < target freq
+	  - Memory quiescence detection to lower DDR/L3 when idle
+
+	  Inspired by Tensor AIO, adapted for Qualcomm platforms with WALT.
+
+	  If unsure, say N.
+
 comment "CPU frequency scaling drivers"
 
 config CPUFREQ_DT

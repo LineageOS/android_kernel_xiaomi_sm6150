@@ -89,8 +89,6 @@ static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
 static unsigned int stale_ns;
 static DEFINE_PER_CPU(struct sugov_tunables *, cached_tunables);
 
-/************************ Governor internals ***********************/
-
 static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
 {
 	s64 delta_ns;
@@ -243,6 +241,7 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 		for_each_cpu(cpu, policy->cpus) {
 			trace_cpu_frequency(next_freq, cpu);
 		}
+
 	} else {
 		if (use_pelt())
 			sg_policy->work_in_progress = true;
@@ -312,6 +311,11 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, int cpu,
 	struct sugov_cpu *loadcpu = &per_cpu(sugov_cpu, cpu);
 	s64 delta;
 
+	/*
+	 * All CPUs in a frequency domain share the same max capacity.
+	 * We could optimize by caching this in sugov_policy at start time,
+	 * but arch_scale_cpu_capacity() is already well-optimized.
+	 */
 	max_cap = arch_scale_cpu_capacity(NULL, cpu);
 	*max = max_cap;
 
