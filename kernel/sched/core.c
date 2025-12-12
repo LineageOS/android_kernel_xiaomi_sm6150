@@ -2857,6 +2857,13 @@ fire_sched_out_preempt_notifiers(struct task_struct *curr,
 
 void release_task_stack(struct task_struct *tsk);
 
+static void mmdrop_async_free(struct work_struct *work)
+{
+	struct mm_struct *mm = container_of(work, typeof(*mm), async_put_work);
+
+	__mmdrop(mm);
+}
+
 static void task_async_free(struct work_struct *work)
 {
 	struct task_struct *p = container_of(work, typeof(*p), async_free.work);
@@ -2984,8 +2991,12 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	kcov_finish_switch(current);
 
 	fire_sched_in_preempt_notifiers(current);
-	if (mm)
-		mmdrop(mm);
+	if (mm) {
+		if (unlikely(atomic_dec_and_test(&mm->mm_count))) {
+			INIT_WORK(&mm->async_put_work, mmdrop_async_free);
+			queue_work(system_unbound_wq, &mm->async_put_work);
+		}
+	}
 	if (unlikely(prev_state == TASK_DEAD)) {
 		if (prev->sched_class->task_dead)
 			prev->sched_class->task_dead(prev);
