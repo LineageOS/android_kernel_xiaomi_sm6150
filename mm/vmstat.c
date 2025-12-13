@@ -1010,23 +1010,6 @@ int fragmentation_index(struct zone *zone, unsigned int order)
 	fill_contig_page_info(zone, order, &info);
 	return __fragmentation_index(order, &info);
 }
-
-/*
- * Return the percentage of external fragmentation for a given order.
- * Returns a value in the range [0, 100].
- */
-unsigned int extfrag_for_order(struct zone *zone, unsigned int order)
-{
-	struct contig_page_info info;
-
-	fill_contig_page_info(zone, order, &info);
-	if (info.free_pages == 0)
-		return 0;
-
-	return div_u64((info.free_pages -
-			(info.free_blocks_suitable << order)) * 100,
-			info.free_pages);
-}
 #endif
 
 #if defined(CONFIG_PROC_FS) || defined(CONFIG_SYSFS) || defined(CONFIG_NUMA)
