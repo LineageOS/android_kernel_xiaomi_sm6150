@@ -57,6 +57,14 @@ void call_rcu(struct rcu_head *head, rcu_callback_t func);
 
 void call_rcu_bh(struct rcu_head *head, rcu_callback_t func);
 void call_rcu_sched(struct rcu_head *head, rcu_callback_t func);
+
+#ifdef CONFIG_RCU_LAZY
+void call_rcu_hurry(struct rcu_head *head, rcu_callback_t func);
+#else
+/* Without CONFIG_RCU_LAZY, call_rcu_hurry is the same as call_rcu */
+#define call_rcu_hurry call_rcu
+#endif
+
 void synchronize_sched(void);
 void rcu_barrier_tasks(void);
 

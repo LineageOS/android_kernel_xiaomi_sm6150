@@ -295,6 +295,14 @@ struct rcu_data {
 #define RCU_NOCB_WAKE_NOT	0
 #define RCU_NOCB_WAKE		1
 #define RCU_NOCB_WAKE_FORCE	2
+#define RCU_NOCB_WAKE_LAZY	3	/* Lazy wakeup with long delay */
+
+/*
+ * RCU Lazy callback batching - delays for power savings.
+ * Lazy callbacks are batched and flushed after this delay,
+ * under memory pressure, or when callback list grows too large.
+ */
+#define RCU_LAZY_FLUSH_JIFFIES	(10 * HZ)
 
 #define RCU_JIFFIES_TILL_FORCE_QS (1 + (HZ > 250) + (HZ > 500))
 					/* For jiffies_till_first_fqs and */

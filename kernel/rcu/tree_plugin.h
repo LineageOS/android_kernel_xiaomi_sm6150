@@ -28,6 +28,7 @@
 #include <linux/gfp.h>
 #include <linux/oom.h>
 #include <linux/sched/debug.h>
+#include <linux/shrinker.h>
 #include <linux/smpboot.h>
 #include <uapi/linux/sched/types.h>
 #include "../time/tick-internal.h"
@@ -115,6 +116,9 @@ static void __init rcu_bootup_announce_oddness(void)
 		pr_info("\tRCU debug GP init slowdown %d jiffies.\n", gp_cleanup_delay);
 	if (IS_ENABLED(CONFIG_RCU_EQS_DEBUG))
 		pr_info("\tRCU debug extended QS entry/exit.\n");
+	if (IS_ENABLED(CONFIG_RCU_LAZY))
+		pr_info("\tRCU lazy callback batching enabled (flush delay: %d jiffies).\n",
+			RCU_LAZY_FLUSH_JIFFIES);
 	rcupdate_announce_bootup_oddness();
 }
 
@@ -790,9 +794,37 @@ static void rcu_preempt_do_callbacks(void)
  */
 void call_rcu(struct rcu_head *head, rcu_callback_t func)
 {
-	__call_rcu(head, func, rcu_state_p, -1, 0);
+	__call_rcu(head, func, rcu_state_p, -1, IS_ENABLED(CONFIG_RCU_LAZY));
 }
 EXPORT_SYMBOL_GPL(call_rcu);
+
+#ifdef CONFIG_RCU_LAZY
+/**
+ * call_rcu_hurry() - Queue RCU callback for invocation after grace period,
+ * and flush all lazy callbacks (including the new one) to ensure they are
+ * invoked soon.
+ *
+ * @head: structure to be used for queueing the RCU updates.
+ * @func: actual callback function to be invoked after the grace period
+ *
+ * The callback function will be invoked some time after a full grace
+ * period elapses, in other words after all pre-existing RCU read-side
+ * critical sections have completed.
+ *
+ * Use this function when you need the callback to be invoked quickly,
+ * without the delay imposed by lazy callback batching. This is useful
+ * for callbacks that free memory under pressure or perform time-sensitive
+ * cleanup operations.
+ *
+ * See the description of call_rcu() for more detailed information on
+ * memory ordering guarantees.
+ */
+void call_rcu_hurry(struct rcu_head *head, rcu_callback_t func)
+{
+	__call_rcu(head, func, rcu_state_p, -1, 0);
+}
+EXPORT_SYMBOL_GPL(call_rcu_hurry);
+#endif /* CONFIG_RCU_LAZY */
 
 /**
  * synchronize_rcu - wait until a grace period has elapsed.
@@ -1939,11 +1971,32 @@ static void wake_nocb_leader_defer(struct rcu_data *rdp, int waketype,
 				   const char *reason)
 {
 	unsigned long flags;
+	unsigned long delay;
 
 	raw_spin_lock_irqsave(&rdp->nocb_lock, flags);
-	if (rdp->nocb_defer_wakeup == RCU_NOCB_WAKE_NOT)
-		mod_timer(&rdp->nocb_timer, jiffies + 1);
-	WRITE_ONCE(rdp->nocb_defer_wakeup, waketype);
+	/*
+	 * For lazy wakeups, use a longer delay (RCU_LAZY_FLUSH_JIFFIES).
+	 * This allows callbacks to batch up, reducing CPU wakeups and
+	 * saving power on idle/lightly-loaded systems.
+	 *
+	 * Lazy wakeup only takes effect if no other wakeup is pending.
+	 * Any non-lazy wakeup overrides a pending lazy wakeup.
+	 */
+	if (waketype == RCU_NOCB_WAKE_LAZY &&
+	    rdp->nocb_defer_wakeup == RCU_NOCB_WAKE_NOT) {
+		delay = RCU_LAZY_FLUSH_JIFFIES;
+		mod_timer(&rdp->nocb_timer, jiffies + delay);
+		WRITE_ONCE(rdp->nocb_defer_wakeup, waketype);
+	} else if (waketype != RCU_NOCB_WAKE_LAZY) {
+		/* Non-lazy wakeups use short delay and override lazy */
+		if (rdp->nocb_defer_wakeup == RCU_NOCB_WAKE_NOT ||
+		    rdp->nocb_defer_wakeup == RCU_NOCB_WAKE_LAZY) {
+			delay = (waketype == RCU_NOCB_WAKE) ? 1 : 0;
+			mod_timer(&rdp->nocb_timer, jiffies + delay);
+		}
+		WRITE_ONCE(rdp->nocb_defer_wakeup, waketype);
+	}
+	/* If already have stronger wakeup pending, do nothing */
 	trace_rcu_nocb_wake(rdp->rsp->name, rdp->cpu, reason);
 	raw_spin_unlock_irqrestore(&rdp->nocb_lock, flags);
 }
@@ -2009,8 +2062,10 @@ static void __call_rcu_nocb_enqueue(struct rcu_data *rdp,
 				    unsigned long flags)
 {
 	int len;
+	long lazy_len;
 	struct rcu_head **old_rhpp;
 	struct task_struct *t;
+	bool all_lazy;
 
 	/* Enqueue the callback on the nocb list and update counts. */
 	atomic_long_add(rhcount, &rdp->nocb_q_count);
@@ -2028,9 +2083,22 @@ static void __call_rcu_nocb_enqueue(struct rcu_data *rdp,
 		return;
 	}
 	len = atomic_long_read(&rdp->nocb_q_count);
+	lazy_len = atomic_long_read(&rdp->nocb_q_count_lazy);
+
+	/*
+	 * CONFIG_RCU_LAZY: If all callbacks in the queue are lazy,
+	 * use deferred lazy wakeup to allow batching for power savings.
+	 * This reduces CPU wakeups when the system is idle.
+	 */
+	all_lazy = IS_ENABLED(CONFIG_RCU_LAZY) && (len == lazy_len);
+
 	if (old_rhpp == &rdp->nocb_head) {
-		if (!irqs_disabled_flags(flags)) {
-			/* ... if queue was empty ... */
+		if (all_lazy) {
+			/* All lazy callbacks - use long delay for batching */
+			wake_nocb_leader_defer(rdp, RCU_NOCB_WAKE_LAZY,
+					       TPS("WakeLazy"));
+		} else if (!irqs_disabled_flags(flags)) {
+			/* ... if queue was empty and has non-lazy CB ... */
 			wake_nocb_leader(rdp, false);
 			trace_rcu_nocb_wake(rdp->rsp->name, rdp->cpu,
 					    TPS("WakeEmpty"));
@@ -2050,6 +2118,13 @@ static void __call_rcu_nocb_enqueue(struct rcu_data *rdp,
 					       TPS("WakeOvfIsDeferred"));
 		}
 		rdp->qlen_last_fqs_check = LONG_MAX / 2;
+	} else if (all_lazy && old_rhpp != &rdp->nocb_head) {
+		/*
+		 * All lazy and not first callback - just ensure lazy
+		 * timer is running if not already set to something stronger.
+		 */
+		wake_nocb_leader_defer(rdp, RCU_NOCB_WAKE_LAZY,
+				       TPS("WakeLazyAdd"));
 	} else {
 		trace_rcu_nocb_wake(rdp->rsp->name, rdp->cpu, TPS("WakeNot"));
 	}
@@ -2560,6 +2635,91 @@ static bool init_nocb_callback_list(struct rcu_data *rdp)
 	rcu_segcblist_disable(&rdp->cblist);
 	return true;
 }
+
+#ifdef CONFIG_RCU_LAZY
+/*
+ * Lazy RCU shrinker - flushes lazy RCU callbacks under memory pressure.
+ *
+ * When the system is under memory pressure, we want to invoke lazy RCU
+ * callbacks promptly to free up memory. This shrinker counts the number
+ * of lazy callbacks and, when asked to shrink, wakes up the NOCB kthreads
+ * to process them immediately.
+ */
+static unsigned long lazy_rcu_shrink_count(struct shrinker *shrink,
+					   struct shrink_control *sc)
+{
+	int cpu;
+	unsigned long count = 0;
+	struct rcu_state *rsp;
+
+	/* Count lazy callbacks across all CPUs and RCU flavors */
+	for_each_rcu_flavor(rsp) {
+		for_each_possible_cpu(cpu) {
+			struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
+
+			if (rcu_is_nocb_cpu(cpu))
+				count += atomic_long_read(&rdp->nocb_q_count_lazy);
+		}
+	}
+
+	return count;
+}
+
+static unsigned long lazy_rcu_shrink_scan(struct shrinker *shrink,
+					  struct shrink_control *sc)
+{
+	int cpu;
+	unsigned long flags;
+	unsigned long count = 0;
+	struct rcu_state *rsp;
+
+	/*
+	 * Wake up all NOCB kthreads to flush lazy callbacks.
+	 * This converts pending lazy wakeups to immediate wakeups.
+	 */
+	for_each_rcu_flavor(rsp) {
+		for_each_possible_cpu(cpu) {
+			struct rcu_data *rdp = per_cpu_ptr(rsp->rda, cpu);
+			long lazy_count;
+
+			if (!rcu_is_nocb_cpu(cpu))
+				continue;
+
+			lazy_count = atomic_long_read(&rdp->nocb_q_count_lazy);
+			if (lazy_count == 0)
+				continue;
+
+			count += lazy_count;
+
+			/*
+			 * Force wakeup if we have any lazy callbacks.
+			 * This overrides the lazy wakeup delay.
+			 */
+			raw_spin_lock_irqsave(&rdp->nocb_lock, flags);
+			if (READ_ONCE(rdp->nocb_defer_wakeup) == RCU_NOCB_WAKE_LAZY)
+				WRITE_ONCE(rdp->nocb_defer_wakeup, RCU_NOCB_WAKE_NOT);
+			raw_spin_unlock_irqrestore(&rdp->nocb_lock, flags);
+
+			wake_nocb_leader(rdp, true);
+		}
+	}
+
+	return count ? count : SHRINK_STOP;
+}
+
+static struct shrinker lazy_rcu_shrinker = {
+	.count_objects = lazy_rcu_shrink_count,
+	.scan_objects = lazy_rcu_shrink_scan,
+	.batch = 0,
+	.seeks = DEFAULT_SEEKS,
+};
+
+static int __init rcu_lazy_shrinker_init(void)
+{
+	return register_shrinker(&lazy_rcu_shrinker);
+}
+late_initcall(rcu_lazy_shrinker_init);
+#endif /* CONFIG_RCU_LAZY */
 
 #else /* #ifdef CONFIG_RCU_NOCB_CPU */
 

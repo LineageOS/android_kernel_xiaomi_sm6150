@@ -238,4 +238,28 @@ config RCU_NOCB_CPU
 	  Say Y here if you want to help to debug reduced OS jitter.
 	  Say N here if you are unsure.
 
+config RCU_LAZY
+	bool "RCU callback lazy invocation functionality"
+	depends on RCU_NOCB_CPU
+	default n
+	help
+	  To save power, batch RCU callbacks and flush after delay,
+	  memory pressure, or callback list growing too big.
+
+	  This feature delays RCU callback invocation by batching them
+	  and flushing after approximately 10 seconds. This allows the
+	  CPU to stay in deeper idle states for longer periods, saving
+	  5-10% power on idle or lightly-loaded systems.
+
+	  Callbacks are flushed early when:
+	  - Memory pressure triggers the shrinker
+	  - Too many callbacks accumulate
+	  - call_rcu_hurry() is used for urgent callbacks
+
+	  This is backported from Linux 6.2 and was developed by Google
+	  specifically for Android power savings.
+
+	  Say Y here if you want better battery life on mobile devices.
+	  Say N here if you are unsure.
+
 endmenu # "RCU Subsystem"
