@@ -3584,20 +3584,40 @@ static void free_mm_walk(struct lru_gen_mm_walk *walk)
 		kfree(walk);
 }
 
-static void inc_min_seq(struct lruvec *lruvec)
+static bool inc_min_seq(struct lruvec *lruvec, int type, bool can_swap)
 {
-	int type;
+	int zone;
+	int remaining = MAX_LRU_BATCH;
 	struct lru_gen_struct *lrugen = &lruvec->lrugen;
+	int new_gen, old_gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
-	VM_BUG_ON(!seq_is_valid(lruvec));
+	if (type == LRU_GEN_ANON && !can_swap)
+		goto done;
 
-	for (type = 0; type < ANON_AND_FILE; type++) {
-		if (get_nr_gens(lruvec, type) != MAX_NR_GENS)
-			continue;
+	/* prevent cold/hot inversion if force_scan is true */
+	for (zone = 0; zone < MAX_NR_ZONES; zone++) {
+		struct list_head *head = &lrugen->lists[old_gen][type][zone];
 
-		reset_ctrl_pos(lruvec, type, true);
-		WRITE_ONCE(lrugen->min_seq[type], lrugen->min_seq[type] + 1);
+		while (!list_empty(head)) {
+			struct page *page = lru_to_page(head);
+
+			VM_BUG_ON_PAGE(PageUnevictable(page), page);
+			VM_BUG_ON_PAGE(PageActive(page), page);
+			VM_BUG_ON_PAGE(page_is_file_cache(page) != type, page);
+			VM_BUG_ON_PAGE(page_zonenum(page) != zone, page);
+
+			new_gen = page_inc_gen(lruvec, page, false);
+			list_move_tail(&page->lru, &lrugen->lists[new_gen][type][zone]);
+
+			if (!--remaining)
+				return false;
+		}
 	}
+done:
+	reset_ctrl_pos(lruvec, type, true);
+	WRITE_ONCE(lrugen->min_seq[type], lrugen->min_seq[type] + 1);
+
+	return true;
 }
 
 static bool try_to_inc_min_seq(struct lruvec *lruvec, bool can_swap)
@@ -3642,7 +3662,7 @@ next:
 	return success;
 }
 
-static void inc_max_seq(struct lruvec *lruvec)
+static void inc_max_seq(struct lruvec *lruvec, bool can_swap, bool force_scan)
 {
 	int prev, next;
 	int type, zone;
@@ -3653,14 +3673,24 @@ static void inc_max_seq(struct lruvec *lruvec)
 
 	VM_BUG_ON(!seq_is_valid(lruvec));
 
-	inc_min_seq(lruvec);
+	for (type = ANON_AND_FILE - 1; type >= 0; type--) {
+		if (get_nr_gens(lruvec, type) != MAX_NR_GENS)
+			continue;
+
+		VM_BUG_ON(!force_scan && (type == LRU_GEN_FILE || can_swap));
+
+		while (!inc_min_seq(lruvec, type, can_swap)) {
+			spin_unlock_irq(&pgdat->lru_lock);
+			cond_resched();
+			spin_lock_irq(&pgdat->lru_lock);
+		}
+	}
 
 	/*
 	 * Update the active/inactive LRU sizes for compatibility. Both sides of
 	 * the current max_seq need to be covered, since max_seq+1 can overlap
 	 * with min_seq[LRU_GEN_ANON] if swapping is constrained. And if they do
-	 * overlap, cold/hot inversion happens. This can be solved by moving
-	 * pages from min_seq to min_seq+1 but is omitted for simplicity.
+	 * overlap, cold/hot inversion happens.
 	 */
 	prev = lru_gen_from_seq(lrugen->max_seq - 1);
 	next = lru_gen_from_seq(lrugen->max_seq + 1);
@@ -3673,8 +3703,6 @@ static void inc_max_seq(struct lruvec *lruvec)
 
 			if (!delta)
 				continue;
-
-			WARN_ON_ONCE(delta != (int)delta);
 
 			__update_lru_size(lruvec, lru, zone, delta);
 			__update_lru_size(lruvec, lru + LRU_ACTIVE, zone, -delta);
@@ -3743,7 +3771,7 @@ done:
 
 	VM_BUG_ON(max_seq != READ_ONCE(lrugen->max_seq));
 
-	inc_max_seq(lruvec);
+	inc_max_seq(lruvec, can_swap, full_scan);
 	/* either this sees any waiters or they will see updated max_seq */
 	if (wq_has_sleeper(&lruvec->mm_state.wait))
 		wake_up_all(&lruvec->mm_state.wait);
