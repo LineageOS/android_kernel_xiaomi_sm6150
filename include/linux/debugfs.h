@@ -385,6 +385,11 @@ static inline ssize_t debugfs_write_file_bool(struct file *file,
 	return -ENODEV;
 }
 
+static inline const struct file_operations *debugfs_real_fops(const struct file *filp)
+{
+	return NULL;
+}
+
 #endif
 
 #endif

@@ -849,6 +849,39 @@ config HAVE_LOW_MEMORY_KILLER
 	  want page allocator to provide sufficient time before it triggers
 	  Out of Memory killer.
 
+config LRU_GEN
+	bool "Multi-Gen LRU"
+	depends on MMU
+	# the following options can use up the spare bits in page flags
+	depends on !MAXSMP && (64BIT || !SPARSEMEM || SPARSEMEM_VMEMMAP)
+	help
+	  A high performance LRU implementation to overcommit memory.
+	  Multi-generational LRU (MGLRU) is a page reclaim policy that
+	  improves upon the existing LRU by using multiple generations to
+	  track page aging. This improves memory management efficiency,
+	  especially under memory pressure, reducing latency and improving
+	  throughput for many workloads.
+
+	  See Documentation/admin-guide/mm/multigen_lru.rst for details.
+
+config LRU_GEN_ENABLED
+	bool "Enable by default"
+	depends on LRU_GEN
+	default y
+	help
+	  This option enables the multi-gen LRU by default. It can still
+	  be disabled at runtime via:
+	    echo n > /sys/kernel/mm/lru_gen/enabled
+
+config LRU_GEN_STATS
+	bool "Full stats for debugging"
+	depends on LRU_GEN
+	help
+	  Do not enable this option unless you plan to look at historical stats
+	  from evicted generations for debugging purpose.
+
+	  This option has a per-memcg and per-node memory overhead.
+
 config PROCESS_RECLAIM
 	bool "Enable process reclaim"
 	depends on PROC_FS

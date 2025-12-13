@@ -18,6 +18,8 @@ struct notifier_block;
 
 struct bio;
 
+struct lru_gen_mm_walk;
+
 #define SWAP_FLAG_PREFER	0x8000	/* set if swap priority specified */
 #define SWAP_FLAG_PRIO_MASK	0x7fff
 #define SWAP_FLAG_PRIO_SHIFT	0
@@ -128,6 +130,10 @@ union swap_header {
  */
 struct reclaim_state {
 	unsigned long reclaimed_slab;
+#ifdef CONFIG_LRU_GEN
+	/* per-thread mm_walk for lru_gen page table walk */
+	struct lru_gen_mm_walk *mm_walk;
+#endif
 };
 
 #ifdef __KERNEL__

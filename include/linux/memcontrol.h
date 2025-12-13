@@ -57,6 +57,13 @@ enum memcg_memory_event {
 	MEMCG_NR_MEMORY_EVENTS,
 };
 
+/* MGLRU memory protection levels */
+enum mem_cgroup_protection {
+	MEMCG_PROT_NONE,
+	MEMCG_PROT_LOW,
+	MEMCG_PROT_MIN,
+};
+
 struct mem_cgroup_reclaim_cookie {
 	pg_data_t *pgdat;
 	int priority;
@@ -280,6 +287,11 @@ struct mem_cgroup {
 	/* List of events which userspace want to receive */
 	struct list_head event_list;
 	spinlock_t event_list_lock;
+
+#ifdef CONFIG_LRU_GEN
+	/* per-memcg mm_struct list */
+	struct lru_gen_mm_list mm_list;
+#endif
 
 	struct mem_cgroup_per_node *nodeinfo[0];
 	/* WARNING: nodeinfo must be the last member here */
@@ -506,6 +518,50 @@ extern int do_swap_account;
 struct mem_cgroup *lock_page_memcg(struct page *page);
 void __unlock_page_memcg(struct mem_cgroup *memcg);
 void unlock_page_memcg(struct page *page);
+
+/* MGLRU: get memcg from mm */
+struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm);
+
+/* MGLRU: put memcg reference */
+static inline void mem_cgroup_put(struct mem_cgroup *memcg)
+{
+	if (memcg)
+		css_put(&memcg->css);
+}
+
+/* MGLRU: try to stabilize page_memcg() for all pages in a memcg */
+static inline bool mem_cgroup_trylock_pages(struct mem_cgroup *memcg)
+{
+	rcu_read_lock();
+
+	if (mem_cgroup_disabled() || !atomic_read(&memcg->moving_account))
+		return true;
+
+	rcu_read_unlock();
+	return false;
+}
+
+static inline void mem_cgroup_unlock_pages(void)
+{
+	rcu_read_unlock();
+}
+
+/* MGLRU: memory protection levels */
+static inline enum mem_cgroup_protection mem_cgroup_protected(
+		struct mem_cgroup *root, struct mem_cgroup *memcg)
+{
+	/*
+	 * Simplified implementation for MGLRU backport.
+	 * Returns MEMCG_PROT_NONE by default.
+	 */
+	if (mem_cgroup_disabled())
+		return MEMCG_PROT_NONE;
+
+	if (memcg == root)
+		return MEMCG_PROT_NONE;
+
+	return MEMCG_PROT_NONE;
+}
 
 /*
  * idx can be of type enum memcg_stat_item or node_stat_item.
@@ -909,6 +965,34 @@ static inline void unlock_page_memcg(struct page *page)
 {
 }
 
+/* MGLRU stubs for !CONFIG_MEMCG */
+static inline struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
+{
+	return NULL;
+}
+
+static inline void mem_cgroup_put(struct mem_cgroup *memcg)
+{
+}
+
+static inline bool mem_cgroup_trylock_pages(struct mem_cgroup *memcg)
+{
+	/* to match page_memcg_rcu() */
+	rcu_read_lock();
+	return true;
+}
+
+static inline void mem_cgroup_unlock_pages(void)
+{
+	rcu_read_unlock();
+}
+
+static inline enum mem_cgroup_protection mem_cgroup_protected(
+		struct mem_cgroup *root, struct mem_cgroup *memcg)
+{
+	return MEMCG_PROT_NONE;
+}
+
 static inline void mem_cgroup_handle_over_high(void)
 {
 }
@@ -1003,6 +1087,12 @@ static inline void mem_cgroup_split_huge_fixup(struct page *head)
 {
 }
 
+static inline void __count_memcg_events(struct mem_cgroup *memcg,
+					enum vm_event_item idx,
+					unsigned long count)
+{
+}
+
 static inline void count_memcg_events(struct mem_cgroup *memcg,
 				      enum vm_event_item idx,
 				      unsigned long count)
@@ -1014,10 +1104,39 @@ static inline void count_memcg_page_event(struct page *page,
 {
 }
 
+static inline void mem_cgroup_put(struct mem_cgroup *memcg)
+{
+}
+
 static inline
 void count_memcg_event_mm(struct mm_struct *mm, enum vm_event_item idx)
 {
 }
+
+static inline struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
+{
+	return NULL;
+}
+
+static inline enum mem_cgroup_protection mem_cgroup_protected(
+	struct mem_cgroup *root, struct mem_cgroup *memcg)
+{
+	return MEMCG_PROT_NONE;
+}
+
+/* MGLRU support - try to stabilize page_memcg() for all pages in a memcg */
+static inline bool mem_cgroup_trylock_pages(struct mem_cgroup *memcg)
+{
+	/* to match page_memcg_rcu() */
+	rcu_read_lock();
+	return true;
+}
+
+static inline void mem_cgroup_unlock_pages(void)
+{
+	rcu_read_unlock();
+}
+
 #endif /* CONFIG_MEMCG */
 
 /* idx can be of type enum memcg_stat_item or node_stat_item */

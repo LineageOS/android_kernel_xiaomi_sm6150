@@ -15,6 +15,7 @@
 #include <linux/dax.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/mm_inline.h>
 
 /*
  *		Double CLOCK lists
@@ -214,6 +215,104 @@ static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
 	*workingsetp = workingset;
 }
 
+#ifdef CONFIG_LRU_GEN
+
+static int page_lru_refs(struct page *page)
+{
+	unsigned long flags = READ_ONCE(page->flags);
+
+	BUILD_BUG_ON(LRU_GEN_WIDTH + LRU_REFS_WIDTH > BITS_PER_LONG - EVICTION_SHIFT);
+
+	/* see the comment on MAX_NR_TIERS */
+	return flags & BIT(PG_workingset) ? (flags & LRU_REFS_MASK) >> LRU_REFS_PGOFF : 0;
+}
+
+void *lru_gen_eviction(struct page *page)
+{
+	int hist, tier;
+	unsigned long token;
+	unsigned long min_seq;
+	struct lruvec *lruvec;
+	struct lru_gen_struct *lrugen;
+	int type = page_is_file_cache(page);
+	int refs = page_lru_refs(page);
+	int delta = hpage_nr_pages(page);
+	bool workingset = PageWorkingset(page);
+	struct mem_cgroup *memcg = page_memcg(page);
+	struct pglist_data *pgdat = page_pgdat(page);
+
+	if (!mem_cgroup_disabled() && !memcg)
+		return NULL;
+
+	lruvec = mem_cgroup_lruvec(pgdat, memcg);
+	lrugen = &lruvec->lrugen;
+	min_seq = READ_ONCE(lrugen->min_seq[type]);
+	token = (min_seq << LRU_REFS_WIDTH) | refs;
+
+	hist = lru_hist_from_seq(min_seq);
+	tier = lru_tier_from_refs(refs + workingset);
+	atomic_long_add(delta, &lrugen->evicted[hist][type][tier]);
+
+	return pack_shadow(mem_cgroup_id(memcg), pgdat, token, workingset);
+}
+
+void lru_gen_refault(struct page *page, void *shadow)
+{
+	int hist, tier, refs;
+	int memcg_id;
+	bool workingset;
+	unsigned long token;
+	unsigned long min_seq;
+	struct lruvec *lruvec;
+	struct lru_gen_struct *lrugen;
+	struct mem_cgroup *memcg;
+	struct pglist_data *pgdat;
+	int type = page_is_file_cache(page);
+	int delta = hpage_nr_pages(page);
+
+	unpack_shadow(shadow, &memcg_id, &pgdat, &token, &workingset);
+
+	refs = token & (BIT(LRU_REFS_WIDTH) - 1);
+	if (refs && !workingset)
+		return;
+
+	if (page_pgdat(page) != pgdat)
+		return;
+
+	rcu_read_lock();
+	memcg = mem_cgroup_from_id(memcg_id);
+	if (!mem_cgroup_disabled() && !memcg)
+		goto unlock;
+
+	token >>= LRU_REFS_WIDTH;
+	lruvec = mem_cgroup_lruvec(pgdat, memcg);
+	lrugen = &lruvec->lrugen;
+	min_seq = READ_ONCE(lrugen->min_seq[type]);
+	if (token != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))
+		goto unlock;
+
+	hist = lru_hist_from_seq(min_seq);
+	tier = lru_tier_from_refs(refs + workingset);
+	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);
+	mod_lruvec_state(lruvec, WORKINGSET_REFAULT, delta);
+
+	/*
+	 * Count the following two cases as stalls:
+	 * 1. For pages accessed through page tables, hotter pages pushed out
+	 *    hot pages which refaulted immediately.
+	 * 2. For pages accessed through file descriptors, numbers of accesses
+	 *    might have been beyond the limit.
+	 */
+	if (lru_gen_in_fault() || refs + workingset == BIT(LRU_REFS_WIDTH)) {
+		SetPageWorkingset(page);
+		mod_lruvec_state(lruvec, WORKINGSET_RESTORE, delta);
+	}
+unlock:
+	rcu_read_unlock();
+}
+
+#endif /* CONFIG_LRU_GEN */
+
 /**
  * workingset_eviction - note the eviction of a page from memory
  * @mapping: address space the page was backing
@@ -234,6 +333,9 @@ void *workingset_eviction(struct address_space *mapping, struct page *page)
 	VM_BUG_ON_PAGE(PageLRU(page), page);
 	VM_BUG_ON_PAGE(page_count(page), page);
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
+
+	if (lru_gen_enabled())
+		return lru_gen_eviction(page);
 
 	lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	eviction = atomic_long_inc_return(&lruvec->inactive_age);
@@ -259,6 +361,11 @@ void workingset_refault(struct page *page, void *shadow)
 	unsigned long refault;
 	bool workingset;
 	int memcgid;
+
+	if (lru_gen_enabled()) {
+		lru_gen_refault(page, shadow);
+		return;
+	}
 
 	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, &workingset);
 

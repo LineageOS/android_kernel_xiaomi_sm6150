@@ -490,6 +490,19 @@ static inline bool supports_clearbhb(int scope)
 						    ID_AA64ISAR2_CLEARBHB_SHIFT);
 }
 
+/* Check whether hardware update of the Access flag is supported (MGLRU) */
+static inline bool cpu_has_hw_af(void)
+{
+	u64 mmfr1;
+
+	if (!IS_ENABLED(CONFIG_ARM64_HW_AFDBM))
+		return false;
+
+	mmfr1 = read_cpuid(ID_AA64MMFR1_EL1);
+	return cpuid_feature_extract_unsigned_field(mmfr1,
+						ID_AA64MMFR1_HADBS_SHIFT);
+}
+
 static inline bool system_supports_32bit_el0(void)
 {
 	return cpus_have_const_cap(ARM64_HAS_32BIT_EL0);

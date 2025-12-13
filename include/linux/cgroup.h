@@ -28,6 +28,18 @@
 
 #ifdef CONFIG_CGROUPS
 
+extern struct mutex cgroup_mutex;
+
+static inline void cgroup_lock(void)
+{
+	mutex_lock(&cgroup_mutex);
+}
+
+static inline void cgroup_unlock(void)
+{
+	mutex_unlock(&cgroup_mutex);
+}
+
 /*
  * All weight knobs on the default hierarhcy should use the following min,
  * default and max values.  The default value is the logarithmic center of
@@ -820,6 +832,9 @@ int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
 		   struct cgroup_namespace *ns);
 
 #else /* !CONFIG_CGROUPS */
+
+static inline void cgroup_lock(void) { }
+static inline void cgroup_unlock(void) { }
 
 static inline void free_cgroup_ns(struct cgroup_namespace *ns) { }
 static inline struct cgroup_namespace *

@@ -564,6 +564,12 @@ extern void free_pages(unsigned long addr, unsigned int order);
 extern void free_hot_cold_page(struct page *page, bool cold);
 extern void free_hot_cold_page_list(struct list_head *list, bool cold);
 
+/* Compatibility wrapper for newer kernels */
+static inline void free_unref_page_list(struct list_head *list)
+{
+	free_hot_cold_page_list(list, true);
+}
+
 struct page_frag_cache;
 extern void __page_frag_cache_drain(struct page *page, unsigned int count);
 extern void *page_frag_alloc(struct page_frag_cache *nc,
