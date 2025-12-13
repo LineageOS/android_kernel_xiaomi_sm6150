@@ -1319,6 +1319,11 @@ static inline bool is_via_compact_memory(int order)
 	return order == -1;
 }
 
+/* Forward declarations for proactive compaction */
+static bool kswapd_is_running(pg_data_t *pgdat);
+static unsigned int fragmentation_score_zone(struct zone *zone);
+static unsigned int fragmentation_score_wmark(pg_data_t *pgdat, bool low);
+
 static enum compact_result __compact_finished(struct zone *zone,
 						struct compact_control *cc)
 {
@@ -1350,6 +1355,24 @@ static enum compact_result __compact_finished(struct zone *zone,
 
 	if (is_via_compact_memory(cc->order))
 		return COMPACT_CONTINUE;
+
+	/* Proactive compaction terminates based on fragmentation score */
+	if (cc->proactive_compaction) {
+		int score, wmark_low;
+		pg_data_t *pgdat;
+
+		pgdat = zone->zone_pgdat;
+		if (kswapd_is_running(pgdat))
+			return COMPACT_PARTIAL_SKIPPED;
+
+		score = fragmentation_score_zone(zone);
+		wmark_low = fragmentation_score_wmark(pgdat, true);
+
+		if (score > wmark_low)
+			return COMPACT_CONTINUE;
+		else
+			return COMPACT_SUCCESS;
+	}
 
 	if (cc->finishing_block) {
 		/*
