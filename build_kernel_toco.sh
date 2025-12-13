@@ -5,8 +5,8 @@ KERNEL_DIR=$(pwd)
 OUT_DIR="$KERNEL_DIR/out"
 JOBS=56
 
-# Neutron Clang 19 toolchain
-TOOLCHAIN_DIR="/home/miguel/Documentos/android/toolchains"
+# Lilium Toolchain (LLVM 22 + PGO + BOLT)
+TOOLCHAIN_DIR="/home/miguel/Documentos/android/lillium"
 export PATH="$TOOLCHAIN_DIR/bin:$PATH"
 
 echo "========================================"
@@ -14,7 +14,7 @@ echo "  Build Kernel - Xiaomi Toco (LineageOS)"
 echo "========================================"
 
 # Verificar clang
-echo "[*] Usando Neutron Clang:"
+echo "[*] Usando Lilium Toolchain:"
 clang --version | head -1
 
 # Fix CUDA/clang

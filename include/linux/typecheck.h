@@ -7,8 +7,8 @@
  * Always evaluates to 1 so you may use it easily in comparisons.
  */
 #define typecheck(type,x) \
-({	type __dummy; \
-	typeof(x) __dummy2; \
+({	type __dummy = (type)0; \
+	typeof(x) __dummy2 = (typeof(x))0; \
 	(void)(&__dummy == &__dummy2); \
 	1; \
 })
