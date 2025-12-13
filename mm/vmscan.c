@@ -121,6 +121,8 @@ struct scan_control {
 	unsigned int memcgs_need_aging:1;
 	unsigned int memcgs_need_swapping:1;
 	unsigned int memcgs_avoid_swapping:1;
+	/* help kswapd determine if it should abort the scan */
+	unsigned long last_reclaimed;
 #endif
 
 	/* Incremented by the number of inactive pages that were scanned */
@@ -175,6 +177,18 @@ int vm_swappiness = 30;
  * zones.
  */
 unsigned long vm_total_pages;
+
+static void set_task_reclaim_state(struct task_struct *task,
+				   struct reclaim_state *rs)
+{
+	/* Check for an overwrite */
+	WARN_ON_ONCE(rs && task->reclaim_state);
+
+	/* Check for the nulling of an already-nulled member */
+	WARN_ON_ONCE(!rs && !task->reclaim_state);
+
+	task->reclaim_state = rs;
+}
 
 static LIST_HEAD(shrinker_list);
 static DECLARE_RWSEM(shrinker_rwsem);
@@ -3584,6 +3598,51 @@ static void free_mm_walk(struct lru_gen_mm_walk *walk)
 		kfree(walk);
 }
 
+/*
+ * set_mm_walk - setup mm_walk for page table walking during reclaim
+ * For kswapd: uses the per-node preallocated mm_walk
+ * For direct reclaim: allocates a temporary mm_walk structure
+ */
+static struct lru_gen_mm_walk *set_mm_walk(struct pglist_data *pgdat)
+{
+	struct lru_gen_mm_walk *walk;
+
+	if (!current->reclaim_state)
+		return NULL;
+
+	walk = current->reclaim_state->mm_walk;
+
+	if (pgdat && current_is_kswapd()) {
+		VM_WARN_ON_ONCE(walk);
+		walk = &pgdat->mm_walk;
+	} else if (!pgdat && !walk) {
+		VM_WARN_ON_ONCE(current_is_kswapd());
+		walk = kzalloc(sizeof(*walk), __GFP_HIGH | __GFP_NOMEMALLOC | __GFP_NOWARN);
+	}
+
+	current->reclaim_state->mm_walk = walk;
+
+	return walk;
+}
+
+static void clear_mm_walk(void)
+{
+	struct lru_gen_mm_walk *walk;
+
+	if (!current->reclaim_state)
+		return;
+
+	walk = current->reclaim_state->mm_walk;
+
+	VM_WARN_ON_ONCE(walk && memchr_inv(walk->nr_pages, 0, sizeof(walk->nr_pages)));
+	VM_WARN_ON_ONCE(walk && memchr_inv(walk->mm_stats, 0, sizeof(walk->mm_stats)));
+
+	current->reclaim_state->mm_walk = NULL;
+
+	if (!current_is_kswapd())
+		kfree(walk);
+}
+
 static bool inc_min_seq(struct lruvec *lruvec, int type, bool can_swap)
 {
 	int zone;
@@ -3886,6 +3945,9 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 
 	VM_BUG_ON(!current_is_kswapd());
 
+	/* record the timestamp of the last scan for kswapd to abort early */
+	sc->last_reclaimed = sc->nr_reclaimed;
+
 	/*
 	 * To reduce the chance of going into the aging path or swapping, which
 	 * can be costly, optimistically skip them unless their corresponding
@@ -3902,7 +3964,7 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 	sc->memcgs_need_swapping = true;
 	sc->memcgs_avoid_swapping = true;
 
-	current->reclaim_state->mm_walk = &pgdat->mm_walk;
+	set_mm_walk(pgdat);
 
 	memcg = mem_cgroup_iter(NULL, NULL, NULL);
 	do {
@@ -3914,7 +3976,7 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 		cond_resched();
 	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
 
-	current->reclaim_state->mm_walk = NULL;
+	clear_mm_walk();
 
 	/*
 	 * The main goal is to OOM kill if every generation from all memcgs is
@@ -4403,13 +4465,19 @@ static long get_nr_to_scan(struct lruvec *lruvec, struct scan_control *sc, bool 
 	int priority;
 	long nr_to_scan;
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+	enum mem_cgroup_protection prot;
 	DEFINE_MAX_SEQ(lruvec);
 	DEFINE_MIN_SEQ(lruvec);
+
+	/* Respect memory.min and memory.low protection */
+	prot = mem_cgroup_protected(sc->target_mem_cgroup, memcg);
+	if (prot == MEMCG_PROT_MIN ||
+	    (prot == MEMCG_PROT_LOW && !sc->memcg_low_reclaim))
+		return 0;
 
 	nr_to_scan = get_nr_evictable(lruvec, max_seq, min_seq, can_swap, need_aging);
 	if (!nr_to_scan)
 		return 0;
-
 
 	if (!mem_cgroup_online(memcg))
 		priority = 0;
@@ -4439,19 +4507,77 @@ static long get_nr_to_scan(struct lruvec *lruvec, struct scan_control *sc, bool 
 	return min_seq[!can_swap] + MIN_NR_GENS <= max_seq ? nr_to_scan : 0;
 }
 
+/*
+ * should_abort_scan - check if reclaim should stop early
+ * Prevents over-aging/over-swapping and handles fatal signals
+ */
+static bool should_abort_scan(struct lruvec *lruvec, unsigned long seq,
+			      struct scan_control *sc, bool need_swapping)
+{
+	int i;
+	DEFINE_MAX_SEQ(lruvec);
+
+	if (!current_is_kswapd()) {
+		/* age each memcg at most once to ensure fairness */
+		if (max_seq - seq > 1)
+			return true;
+
+		/* over-swapping can increase allocation latency */
+		if (sc->nr_reclaimed >= sc->nr_to_reclaim && need_swapping)
+			return true;
+
+		/* give this thread a chance to exit and free its memory */
+		if (fatal_signal_pending(current)) {
+			sc->nr_reclaimed += MIN_LRU_BATCH;
+			return true;
+		}
+
+		if (!global_reclaim(sc))
+			return false;
+	} else if (sc->nr_reclaimed - sc->last_reclaimed < sc->nr_to_reclaim)
+		return false;
+
+	/* keep scanning at low priorities to ensure fairness */
+	if (sc->priority > DEF_PRIORITY - 2)
+		return false;
+
+	/*
+	 * A minimum amount of work was done under global memory pressure.
+	 * It's better to stop now, and restart later if necessary.
+	 */
+	for (i = 0; i <= sc->reclaim_idx; i++) {
+		unsigned long wmark;
+		struct zone *zone = lruvec_pgdat(lruvec)->node_zones + i;
+
+		if (!managed_zone(zone))
+			continue;
+
+		wmark = current_is_kswapd() ? high_wmark_pages(zone) : low_wmark_pages(zone);
+		if (wmark > zone_page_state(zone, NR_FREE_PAGES))
+			return false;
+	}
+
+	sc->nr_reclaimed += MIN_LRU_BATCH;
+
+	return true;
+}
+
 static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
 	struct blk_plug plug;
 	long scanned = 0;
 	bool need_aging = false;
-	bool swapped = false;
+	bool need_swapping = false;
 	unsigned long reclaimed = sc->nr_reclaimed;
-	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
+	DEFINE_MAX_SEQ(lruvec);
+
+	/* Flush per-cpu LRU batches to ensure pages are in the right lists */
+	lru_add_drain();
 
 	blk_start_plug(&plug);
 
-	if (current_is_kswapd())
-		current->reclaim_state->mm_walk = &pgdat->mm_walk;
+	/* Setup mm_walk for both kswapd and direct reclaim */
+	set_mm_walk(lruvec_pgdat(lruvec));
 
 	while (true) {
 		int delta;
@@ -4469,27 +4595,26 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc
 		if (!nr_to_scan)
 			goto done;
 
-		delta = evict_pages(lruvec, sc, swappiness, &swapped);
+		delta = evict_pages(lruvec, sc, swappiness, &need_swapping);
 		if (!delta)
 			goto done;
-
-		if (sc->memcgs_avoid_swapping && swappiness < 200 && swapped)
-			break;
 
 		scanned += delta;
 		if (scanned >= nr_to_scan)
 			break;
 
+		/* Check if we should stop early */
+		if (should_abort_scan(lruvec, max_seq, sc, need_swapping))
+			break;
+
 		cond_resched();
 	}
 
-	if (!need_aging)
+	/* see the comment in lru_gen_age_node() */
+	if (sc->nr_reclaimed - reclaimed >= MIN_LRU_BATCH && !need_aging)
 		sc->memcgs_need_aging = false;
-	if (!swapped)
-		sc->memcgs_need_swapping = false;
 done:
-	if (current_is_kswapd())
-		current->reclaim_state->mm_walk = NULL;
+	clear_mm_walk();
 
 	blk_finish_plug(&plug);
 }
@@ -5019,7 +5144,7 @@ static ssize_t lru_gen_seq_write(struct file *file, const char __user *src,
 		return -ENOMEM;
 	}
 
-	current->reclaim_state = &rs;
+	set_task_reclaim_state(current, &rs);
 	flags = memalloc_noreclaim_save();
 
 	while ((cur = strsep(&next, ",;\n"))) {
@@ -5049,7 +5174,7 @@ static ssize_t lru_gen_seq_write(struct file *file, const char __user *src,
 	}
 
 	memalloc_noreclaim_restore(flags);
-	current->reclaim_state = NULL;
+	set_task_reclaim_state(current, NULL);
 
 	free_mm_walk(rs.mm_walk);
 	kvfree(buf);
@@ -5829,6 +5954,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 				gfp_t gfp_mask, nodemask_t *nodemask)
 {
 	unsigned long nr_reclaimed;
+	struct reclaim_state reclaim_state = {};
 	struct scan_control sc = {
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
 		.gfp_mask = current_gfp_context(gfp_mask),
@@ -5849,6 +5975,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 	if (throttle_direct_reclaim(sc.gfp_mask, zonelist, nodemask))
 		return 1;
 
+	set_task_reclaim_state(current, &reclaim_state);
 	trace_mm_vmscan_direct_reclaim_begin(order,
 				sc.may_writepage,
 				sc.gfp_mask,
@@ -5857,6 +5984,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
 
 	trace_mm_vmscan_direct_reclaim_end(nr_reclaimed);
+	set_task_reclaim_state(current, NULL);
 
 	return nr_reclaimed;
 }
@@ -5868,6 +5996,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						pg_data_t *pgdat,
 						unsigned long *nr_scanned)
 {
+	struct reclaim_state reclaim_state = {};
 	struct scan_control sc = {
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
 		.target_mem_cgroup = memcg,
@@ -5881,6 +6010,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 	sc.gfp_mask = (gfp_mask & GFP_RECLAIM_MASK) |
 			(GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK);
 
+	set_task_reclaim_state(current, &reclaim_state);
 	trace_mm_vmscan_memcg_softlimit_reclaim_begin(sc.order,
 						      sc.may_writepage,
 						      sc.gfp_mask,
@@ -5896,6 +6026,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 	shrink_node_memcg(pgdat, memcg, &sc, &lru_pages);
 
 	trace_mm_vmscan_memcg_softlimit_reclaim_end(sc.nr_reclaimed);
+	set_task_reclaim_state(current, NULL);
 
 	*nr_scanned = sc.nr_scanned;
 	return sc.nr_reclaimed;
@@ -5911,6 +6042,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	unsigned long pflags;
 	int nid;
 	unsigned int noreclaim_flag;
+	struct reclaim_state reclaim_state = {};
 	struct scan_control sc = {
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
 		.gfp_mask = (current_gfp_context(gfp_mask) & GFP_RECLAIM_MASK) |
@@ -5937,6 +6069,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 					    sc.gfp_mask,
 					    sc.reclaim_idx);
 
+	set_task_reclaim_state(current, &reclaim_state);
 	psi_memstall_enter(&pflags);
 	noreclaim_flag = memalloc_noreclaim_save();
 
@@ -5944,6 +6077,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 
 	memalloc_noreclaim_restore(noreclaim_flag);
 	psi_memstall_leave(&pflags);
+	set_task_reclaim_state(current, NULL);
 
 	trace_mm_vmscan_memcg_reclaim_end(nr_reclaimed);
 
@@ -6348,14 +6482,12 @@ static int kswapd(void *p)
 	pg_data_t *pgdat = (pg_data_t*)p;
 	struct task_struct *tsk = current;
 
-	struct reclaim_state reclaim_state = {
-		.reclaimed_slab = 0,
-	};
+	struct reclaim_state reclaim_state = {};
 	const struct cpumask *cpumask = cpumask_of_node(pgdat->node_id);
 
 	if (!cpumask_empty(cpumask))
 		set_cpus_allowed_ptr(tsk, cpumask);
-	current->reclaim_state = &reclaim_state;
+	set_task_reclaim_state(current, &reclaim_state);
 
 	/*
 	 * Tell the memory management that we're a "memory allocator",
@@ -6419,7 +6551,7 @@ kswapd_try_sleep:
 	}
 
 	tsk->flags &= ~(PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD);
-	current->reclaim_state = NULL;
+	set_task_reclaim_state(current, NULL);
 
 	return 0;
 }
@@ -6472,7 +6604,7 @@ void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
  */
 unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 {
-	struct reclaim_state reclaim_state;
+	struct reclaim_state reclaim_state = {};
 	struct scan_control sc = {
 		.nr_to_reclaim = nr_to_reclaim,
 		.gfp_mask = GFP_HIGHUSER_MOVABLE,
@@ -6490,7 +6622,6 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 
 	noreclaim_flag = memalloc_noreclaim_save();
 	fs_reclaim_acquire(sc.gfp_mask);
-	reclaim_state.reclaimed_slab = 0;
 	p->reclaim_state = &reclaim_state;
 
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
@@ -6660,7 +6791,7 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 	/* Minimum pages needed in order to stay on node */
 	const unsigned long nr_pages = 1 << order;
 	struct task_struct *p = current;
-	struct reclaim_state reclaim_state;
+	struct reclaim_state reclaim_state = {};
 	unsigned int noreclaim_flag;
 	struct scan_control sc = {
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
@@ -6682,7 +6813,6 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 	noreclaim_flag = memalloc_noreclaim_save();
 	p->flags |= PF_SWAPWRITE;
 	fs_reclaim_acquire(sc.gfp_mask);
-	reclaim_state.reclaimed_slab = 0;
 	p->reclaim_state = &reclaim_state;
 
 	if (node_pagecache_reclaimable(pgdat) > pgdat->min_unmapped_pages) {
