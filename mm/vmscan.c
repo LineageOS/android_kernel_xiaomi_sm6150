@@ -5956,6 +5956,12 @@ static void age_active_anon(struct pglist_data *pgdat,
 {
 	struct mem_cgroup *memcg;
 
+	/* MGLRU has its own aging mechanism */
+	if (lru_gen_enabled()) {
+		lru_gen_age_node(pgdat, sc);
+		return;
+	}
+
 	if (!total_swap_pages)
 		return;
 
