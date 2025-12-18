@@ -30,7 +30,7 @@ rm -f .config
 
 # Defconfig (atoll es el SoC correcto para toco/SM6150)
 echo "[*] Generando defconfig..."
-make O="$OUT_DIR" ARCH=arm64 vendor/atoll-perf_defconfig vendor/toco.config
+make O="$OUT_DIR" ARCH=arm64 vendor/sdmsteppe-perf_defconfig vendor/toco.config
 
 # Compilar
 echo "[*] Compilando con $JOBS hilos (Full LTO)..."
