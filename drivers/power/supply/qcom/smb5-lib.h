@@ -144,6 +144,12 @@ enum print_reason {
 #else
 #define PD_UNVERIFED_VOLTAGE		4400000
 #endif
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+/* lct thermal */
+#define LCT_THERM_CALL_LEVEL		14
+#define LCT_THERM_LCDOFF_LEVEL		11
+#endif
+
 /* thermal micros */
 #define MAX_TEMP_LEVEL		16
 /* percent of ICL compared to base 5V for different PD voltage_min voltage */
@@ -906,6 +912,11 @@ struct smb_charger {
 	u32			start_step_vbat;
 	int			trigger_taper_count;
 	int			index_vfloat;
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	struct notifier_block	notifier;
+	struct work_struct	fb_notify_work;
+#endif
 
 	/* fast full charge related */
 	int			chg_term_current_thresh_hi_from_dts;
