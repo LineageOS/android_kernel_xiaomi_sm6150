@@ -3277,6 +3277,32 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 	if (val->intval > chg->thermal_levels)
 		return -EINVAL;
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{
+		extern union power_supply_propval lct_therm_lvl_reserved;
+		extern bool lct_backlight_off;
+		extern int LctIsInCall;
+		extern int LctThermal;
+
+		if (LctThermal == 0)
+			lct_therm_lvl_reserved.intval = val->intval;
+
+		if ((lct_backlight_off) && (LctIsInCall == 0) &&
+				(val->intval > LCT_THERM_LCDOFF_LEVEL)) {
+			pr_info("level ignored: backlight_off:%d level:%d\n",
+					lct_backlight_off, val->intval);
+			return 0;
+		}
+
+		if ((LctIsInCall == 1) &&
+				(val->intval != LCT_THERM_CALL_LEVEL)) {
+			pr_info("level ignored: LctIsInCall:%d level:%d\n",
+					LctIsInCall, val->intval);
+			return 0;
+		}
+	}
+#endif
+
 	rc = smblib_get_prop_from_bms(chg,
 				POWER_SUPPLY_PROP_TEMP, &batt_temp);
 	if (rc < 0) {
