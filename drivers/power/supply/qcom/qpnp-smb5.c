@@ -34,6 +34,21 @@
 #include "smb5-lib.h"
 #include "schgm-flash.h"
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#include <linux/notifier.h>
+#include <linux/msm_drm_notify.h>
+#include <linux/fb.h>
+
+union power_supply_propval lct_therm_lvl_reserved;
+union power_supply_propval lct_therm_level;
+union power_supply_propval lct_therm_call_level = {LCT_THERM_CALL_LEVEL,};
+union power_supply_propval lct_therm_lcdoff_level = {LCT_THERM_LCDOFF_LEVEL,};
+
+bool lct_backlight_off;
+int LctIsInCall = 0;
+int LctThermal = 0;
+#endif
+
 static struct smb_params smb5_pmi632_params = {
 	.fcc			= {
 		.name   = "fast charge current",
@@ -4440,6 +4455,92 @@ struct usbpd *smb_get_usbpd(void)
 EXPORT_SYMBOL(smb_get_usbpd);
 
 #ifdef CONFIG_MACH_XIAOMI_SURYA
+static ssize_t lct_thermal_call_status_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", LctIsInCall);
+}
+
+static ssize_t lct_thermal_call_status_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int retval;
+	unsigned long input;
+
+	retval = kstrtol(buf, 10, &input);
+	if (retval < 0) {
+		pr_err("kstrtol fail%d\n", retval);
+		return retval;
+	}
+	LctIsInCall = input;
+	pr_info("IsInCall = %d\n", LctIsInCall);
+	return count;
+}
+
+static struct device_attribute surya_attrs[] = {
+	__ATTR(thermalcall, S_IRUGO | S_IWUSR,
+			lct_thermal_call_status_show, lct_thermal_call_status_store),
+};
+
+static void thermal_fb_notifier_resume_work(struct work_struct *work)
+{
+	struct smb_charger *chg = container_of(work, struct smb_charger,
+							fb_notify_work);
+	LctThermal = 1;
+
+	if ((lct_backlight_off) && (LctIsInCall == 0)) {
+		if (lct_therm_lvl_reserved.intval > LCT_THERM_LCDOFF_LEVEL)
+			smblib_set_prop_system_temp_level(chg,
+						&lct_therm_lcdoff_level);
+		else
+			smblib_set_prop_system_temp_level(chg,
+						&lct_therm_lvl_reserved);
+	} else if (LctIsInCall == 1) {
+		smblib_set_prop_system_temp_level(chg, &lct_therm_call_level);
+	} else {
+		smblib_set_prop_system_temp_level(chg, &lct_therm_lvl_reserved);
+	}
+
+	LctThermal = 0;
+}
+
+static int thermal_notifier_callback(struct notifier_block *noti,
+				unsigned long event, void *data)
+{
+	struct fb_event *ev_data = data;
+	struct smb_charger *chg = container_of(noti, struct smb_charger,
+							notifier);
+	int *blank;
+
+	if (ev_data && ev_data->data && chg) {
+		blank = ev_data->data;
+		if (event == MSM_DRM_EARLY_EVENT_BLANK &&
+				*blank == MSM_DRM_BLANK_UNBLANK) {
+			lct_backlight_off = false;
+			schedule_work(&chg->fb_notify_work);
+		} else if (event == MSM_DRM_EVENT_BLANK &&
+				*blank == MSM_DRM_BLANK_POWERDOWN) {
+			lct_backlight_off = true;
+			schedule_work(&chg->fb_notify_work);
+		}
+	}
+
+	return 0;
+}
+
+static int lct_register_powermanger(struct smb_charger *chg)
+{
+	chg->notifier.notifier_call = thermal_notifier_callback;
+	msm_drm_register_client(&chg->notifier);
+	return 0;
+}
+
+static int lct_unregister_powermanger(struct smb_charger *chg)
+{
+	msm_drm_unregister_client(&chg->notifier);
+	return 0;
+}
+
 extern struct usbpd *smb_get_g_pd(void);
 #endif
 
@@ -4663,6 +4764,25 @@ static int smb5_probe(struct platform_device *pdev)
 	pr_info("QPNP SMB5 probed successfully\n");
 
 #ifdef CONFIG_MACH_XIAOMI_SURYA
+	{
+		unsigned char i;
+		for (i = 0; i < ARRAY_SIZE(surya_attrs); i++) {
+			rc = sysfs_create_file(&chg->dev->kobj,
+						&surya_attrs[i].attr);
+			if (rc < 0) {
+				pr_info("sysfs create file fail %d\n", rc);
+				sysfs_remove_file(&chg->dev->kobj,
+							&surya_attrs[i].attr);
+			}
+		}
+	}
+
+	lct_therm_lvl_reserved.intval = 0;
+	lct_therm_level.intval = 0;
+	lct_backlight_off = false;
+	INIT_WORK(&chg->fb_notify_work, thermal_fb_notifier_resume_work);
+	lct_register_powermanger(chg);
+
 	INIT_WORK(&chg->otg_chg_notify_work, step_otg_chg_work);
 	rc = init_otg_step_chg(chg);
 	if (rc < 0)
@@ -4686,6 +4806,15 @@ static int smb5_remove(struct platform_device *pdev)
 	struct smb_charger *chg = &chip->chg;
 
 #ifdef CONFIG_MACH_XIAOMI_SURYA
+	{
+		unsigned char i;
+		for (i = 0; i < ARRAY_SIZE(surya_attrs); i++)
+			sysfs_remove_file(&chg->dev->kobj,
+						&surya_attrs[i].attr);
+	}
+
+	lct_unregister_powermanger(chg);
+
 	power_supply_unreg_notifier(&chg->otg_step_nb);
 	wakeup_source_trash(&chg->step_otg_chg_ws);
 #endif
