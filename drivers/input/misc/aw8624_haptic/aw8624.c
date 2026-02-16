@@ -94,7 +94,11 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 	{"MiRemix_RTP.bin"},
 	{"Mountain_Spring_RTP.bin"},
 	{"Orange_RTP.bin"},
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{"WindChime_RTP.bin"},
+#else
 	{"Raindrops_RTP.bin"},
+#endif
 	{"Space_Age_RTP.bin"},
 	{"ToyRobot_RTP.bin"},
 	{"Vigor_RTP.bin"},
@@ -147,13 +151,22 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 	{"NFC_card_rtp.bin"},
 	{"wakeup_voice_assistant_rtp.bin"},
 	{"NFC_card_slow_rtp.bin"},
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{"aw8624_rtp_1.bin"},	//99
+	{"aw8624_rtp_1.bin"},	//100
+#else
 	{"aw8624_rtp.bin"},	//99
 	{"aw8624_rtp.bin"},	//100
+#endif
 	{"offline_countdown_RTP.bin"},
 	{"scene_bomb_injury_RTP.bin"},
 	{"scene_bomb_RTP.bin"},	//103
 	{"door_open_RTP.bin"},
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{"aw8624_rtp_1.bin"},
+#else
 	{"aw8624_rtp.bin"},
+#endif
 	{"scene_step_RTP.bin"},	//106
 	{"crawl_RTP.bin"},
 	{"scope_on_RTP.bin"},
@@ -165,7 +178,11 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 	{"punch_RTP.bin"},
 	{"pan_RTP.bin"},
 	{"bandage_RTP.bin"},
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{"aw8624_rtp_1.bin"},
+#else
 	{"aw8624_rtp.bin"},
+#endif
 	{"scene_jump_RTP.bin"},
 	{"vehicle_plane_RTP.bin"},	//119
 	{"scene_openparachute_RTP.bin"},	//120
@@ -176,7 +193,11 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 	{"vehicle_moto_RTP.bin"},	//125
 	{"firearms_akm_RTP.bin"},	//126
 	{"firearms_m16a4_RTP.bin"},	//127
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{"aw8624_rtp_1.bin"},
+#else
 	{"aw8624_rtp.bin"},
+#endif
 	{"firearms_awm_RTP.bin"},	//129
 	{"firearms_mini14_RTP.bin"},	//130
 	{"firearms_vss_RTP.bin"},	//131
@@ -184,6 +205,15 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 	{"firearms_ump9_RTP.bin"},	//133
 	{"firearms_dp28_RTP.bin"},	//134
 	{"firearms_s1897_RTP.bin"},	//135
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{"aw8624_rtp_1.bin"},
+	{"firearms_p18c_RTP.bin"},	//137
+	{"aw8624_rtp_1.bin"},
+	{"aw8624_rtp_1.bin"},
+	{"aw8624_rtp_1.bin"},
+	{"aw8624_rtp_1.bin"},	//141
+	{"aw8624_rtp_1.bin"},
+#else
 	{"aw8624_rtp.bin"},
 	{"firearms_p18c_RTP.bin"},	//137
 	{"aw8624_rtp.bin"},
@@ -191,6 +221,7 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 	{"aw8624_rtp.bin"},
 	{"aw8624_rtp.bin"},	//141
 	{"aw8624_rtp.bin"},
+#endif
 };
 
 struct aw8624_container *aw8624_rtp;
