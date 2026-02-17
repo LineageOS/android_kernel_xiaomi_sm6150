@@ -438,28 +438,57 @@ static int read_step_chg_range_data_from_node(struct device_node *node,
 		return rc;
 	}
 
-	return rc;
+	return tuples;
 }
 
 static int smb5_charge_step_charge_init(struct smb_charger *chg,
 					struct device_node *node)
 {
 	int rc = 0;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	int rc2 = 0;
+
+	chg->six_pin_step_cfg_2_count = 0;
+#endif
+
+	chg->six_pin_step_cfg_count = 0;
 
 	rc = read_step_chg_range_data_from_node(node,
 			"mi,six-pin-step-chg-params",
 			chg->six_pin_step_cfg);
+	if (rc >= 0)
+		chg->six_pin_step_cfg_count = rc;
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	rc2 = read_step_chg_range_data_from_node(node,
+			"mi,six-pin-step-chg-params_2",
+			chg->six_pin_step_cfg_2);
+	if (rc2 >= 0)
+		chg->six_pin_step_cfg_2_count = rc2;
+
+	if (rc < 0 && rc2 >= 0) {
+		memcpy(chg->six_pin_step_cfg, chg->six_pin_step_cfg_2,
+				sizeof(chg->six_pin_step_cfg));
+		chg->six_pin_step_cfg_count = chg->six_pin_step_cfg_2_count;
+		rc = 0;
+	}
+#endif
+
 	if (rc < 0) {
 		pr_debug("Read mi,six-pin-step-chg-params failed charger node, rc=%d\n",
 					rc);
 		chg->six_pin_step_charge_enable = false;
 	}
 
-	return rc;
+	return rc < 0 ? rc : 0;
 }
 #define MICRO_1P5A				1500000
 #define MICRO_P1A				100000
 #define MICRO_1PA				1000000
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define MICRO_P5A				500000
+#define MICRO_2PA				2000000
+#endif
 #define MICRO_3PA				3000000
 #define MICRO_1P8A_FOR_DCP		1800000
 #define MICRO_4PA				4000000
@@ -593,7 +622,15 @@ static int smb5_parse_dt(struct smb5 *chip)
 	if (rc < 0)
 		chg->otg_cl_ua =
 			(chip->chg.chg_param.smb_version == PMI632_SUBTYPE)
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 						? MICRO_1PA : MICRO_3PA;
+#else
+						? MICRO_1PA : MICRO_2PA;
+
+	if ((strnstr(saved_command_line, "androidboot.hwc=INT", strlen(saved_command_line)) != NULL)
+		|| (strnstr(saved_command_line, "androidboot.hwc=THAI", strlen(saved_command_line)) != NULL))
+		chg->otg_cl_ua = MICRO_1PA;
+#endif
 
 	rc = of_property_read_u32(node, "qcom,chg-term-src",
 			&chip->dt.term_current_src);
@@ -878,7 +915,7 @@ static int smb5_parse_dt(struct smb5 *chip)
 	if (chg->six_pin_step_charge_enable) {
 		rc = smb5_charge_step_charge_init(chg, node);
 		if (!rc) {
-			for (i = 0; i < MAX_STEP_ENTRIES; i++)
+			for (i = 0; i < chg->six_pin_step_cfg_count; i++)
 				pr_err("six-pin-step-chg-cfg: %duV, %duA\n",
 						chg->six_pin_step_cfg[i].vfloat_step_uv,
 						chg->six_pin_step_cfg[i].fcc_step_ua);
@@ -1086,6 +1123,23 @@ static int smb5_parse_dt(struct smb5 *chip)
 		}
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	chg->switch_sel_gpio = of_get_named_gpio(node, "mi,switch-sel-gpio", 0);
+	if (!gpio_is_valid(chg->switch_sel_gpio)) {
+		pr_err("switch_sel_gpio not specified\n");
+		chg->switch_sel_gpio = -EINVAL;
+	} else {
+		rc = devm_gpio_request(chg->dev, chg->switch_sel_gpio,
+						"switch_sel");
+		if (rc)
+			pr_err("Request switch_sel gpio failed, rc=%d\n", rc);
+
+		rc = gpio_direction_output(chg->switch_sel_gpio, 0);
+		if (rc)
+			pr_err("Unable to set dir for switch_sel gpio\n");
+	}
+#endif
+
 	return 0;
 }
 
@@ -1165,6 +1219,10 @@ static enum power_supply_property smb5_usb_props[] = {
 	POWER_SUPPLY_PROP_SKIN_HEALTH,
 	POWER_SUPPLY_PROP_APSD_RERUN,
 	POWER_SUPPLY_PROP_APSD_TIMEOUT,
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	POWER_SUPPLY_PROP_QC3P5_POWER_LIMIT,
+	POWER_SUPPLY_PROP_QC3P5_CURRENT_MAX,
+#endif
 	POWER_SUPPLY_PROP_APDO_MAX,
 };
 
@@ -1408,6 +1466,14 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_APSD_TIMEOUT:
 		val->intval = chg->apsd_ext_timeout;
 		break;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	case POWER_SUPPLY_PROP_QC3P5_POWER_LIMIT:
+		val->intval = chg->qc3p5_power_limit_w;
+		break;
+	case POWER_SUPPLY_PROP_QC3P5_CURRENT_MAX:
+		val->intval = get_client_vote(chg->usb_icl_votable, QC3P5_VOTER);
+		break;
+#endif
 	case POWER_SUPPLY_PROP_APDO_MAX:
 		val->intval = chg->apdo_max;
 		break;
@@ -1531,6 +1597,11 @@ static int smb5_usb_set_prop(struct power_supply *psy,
 		chg->apsd_ext_timeout = false;
 		smblib_rerun_apsd(chg);
 		break;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	case POWER_SUPPLY_PROP_QC3P5_CURRENT_MAX:
+		rc = vote(chg->usb_icl_votable, QC3P5_VOTER, true, val->intval);
+		break;
+#endif
 	case POWER_SUPPLY_PROP_APDO_MAX:
 		chg->apdo_max = val->intval;
 		break;
@@ -1558,6 +1629,9 @@ static int smb5_usb_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CONNECTOR_TEMP:
 	case POWER_SUPPLY_PROP_VBUS_DISABLE:
 	case POWER_SUPPLY_PROP_APSD_RERUN:
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	case POWER_SUPPLY_PROP_QC3P5_CURRENT_MAX:
+#endif
 	case POWER_SUPPLY_PROP_APDO_MAX:
 		return 1;
 	default:
@@ -1779,7 +1853,9 @@ static int smb5_usb_main_get_prop(struct power_supply *psy,
 		break;
 	/* Use this property to report SMB health */
 	case POWER_SUPPLY_PROP_HEALTH:
-		rc = val->intval = smblib_get_prop_smb_health(chg);
+		val->intval = smblib_get_prop_smb_health(chg);
+		if (val->intval < 0)
+			rc = val->intval;
 		break;
 	/* Use this property to report overheat status */
 	case POWER_SUPPLY_PROP_HOT_TEMP:
@@ -1805,6 +1881,7 @@ static int smb5_usb_main_set_prop(struct power_supply *psy,
 	union power_supply_propval pval = {0, };
 	enum power_supply_type real_chg_type = chg->real_charger_type;
 	int parallel_output_mode = 0;
+	int six_pin_last_step = 0;
 	int rc = 0, offset_ua = 0;
 
 	switch (psp) {
@@ -1818,10 +1895,12 @@ static int smb5_usb_main_set_prop(struct power_supply *psy,
 			offset_ua = 0;
 
 		if (chg->six_pin_step_charge_enable) {
+			if (chg->six_pin_step_cfg_count > 0)
+				six_pin_last_step = chg->six_pin_step_cfg_count - 1;
                         rc = smblib_get_prop_from_bms(chg, POWER_SUPPLY_PROP_TEMP, &pval);
                         /* if temp out of soft jeita normal zone, do not add fast charge current offset */
                         if (pval.intval >= CP_WARM_THRESHOLD - SOFT_JEITA_HYSTERESIS || pval.intval <= CP_COOL_THRESHOLD + SOFT_JEITA_HYSTERESIS
-                                        || chg->index_vfloat == MAX_STEP_ENTRIES - 1)
+                                        || chg->index_vfloat >= six_pin_last_step)
 
                                 rc = smblib_set_charge_param(chg, &chg->param.fcc, val->intval);
                         else
@@ -2143,6 +2222,10 @@ static enum power_supply_property smb5_batt_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_TYPEC_MODE,
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	POWER_SUPPLY_PROP_REVERSE_CHARGE_MODE,
+	POWER_SUPPLY_PROP_CHARGE_AWAKE_STATE,
+#endif
 };
 
 #define DEBUG_ACCESSORY_TEMP_DECIDEGC	250
@@ -2325,6 +2408,14 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 		else
 			val->intval = chg->typec_mode;
 		break;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	case POWER_SUPPLY_PROP_REVERSE_CHARGE_MODE:
+		val->intval = chg->reverse_charge_mode;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_AWAKE_STATE:
+		rc = smblib_get_prop_batt_awake(chg, val);
+		break;
+#endif
 	default:
 		pr_err("batt power supply prop %d not supported\n", psp);
 		return -EINVAL;
@@ -2477,6 +2568,16 @@ static int smb5_batt_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
 		rc = smblib_set_prop_system_temp_level(chg, val);
 		break;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	case POWER_SUPPLY_PROP_REVERSE_CHARGE_MODE:
+		chg->reverse_charge_mode = !!val->intval;
+		if (chg->reverse_charge_mode != chg->reverse_charge_state) {
+			chg->reverse_charge_state = chg->reverse_charge_mode;
+			if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_PD)
+				rerun_reverse_check(chg);
+		}
+		break;
+#endif
 	default:
 		rc = -EINVAL;
 	}
@@ -2504,6 +2605,9 @@ static int smb5_batt_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_BATTERY_CHARGING_ENABLED:
 	case POWER_SUPPLY_PROP_BATTERY_CHARGING_LIMITED:
 	case POWER_SUPPLY_PROP_SLOWLY_CHARGING:
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	case POWER_SUPPLY_PROP_REVERSE_CHARGE_MODE:
+#endif
 		return 1;
 	default:
 		break;
@@ -4177,6 +4281,117 @@ static void smb5_create_debugfs(struct smb5 *chip)
 
 #endif
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define  BATT_10_BELOW_ZERO_THRESHOLD    (-100)
+#define  BATT_15_THRESHOLD    150
+#define  BATT_50_THRESHOLD    500
+#define  BATT_40_THRESHOLD    400
+#define  BATT_TEMP_HYSTERESIS     10
+#define  OTG_WAKELOCK_HOLD_TIME 2000 /* in ms */
+
+static int lct_get_otg_chg_current(int temp)
+{
+	int otg_chg_current_temp = 0;
+
+	if ((temp >= BATT_15_THRESHOLD + BATT_TEMP_HYSTERESIS)
+			&& (temp < BATT_40_THRESHOLD - BATT_TEMP_HYSTERESIS)) {
+		otg_chg_current_temp = MICRO_2PA;
+	} else if ((temp > BATT_40_THRESHOLD + BATT_TEMP_HYSTERESIS)
+			&& (temp <= BATT_50_THRESHOLD - BATT_TEMP_HYSTERESIS)) {
+		otg_chg_current_temp = MICRO_1P5A;
+	} else if ((temp > BATT_50_THRESHOLD)
+			|| ((temp >= BATT_10_BELOW_ZERO_THRESHOLD + BATT_TEMP_HYSTERESIS)
+			&& (temp < BATT_15_THRESHOLD))) {
+		otg_chg_current_temp = MICRO_1PA;
+	} else if (temp < BATT_10_BELOW_ZERO_THRESHOLD) {
+		otg_chg_current_temp = MICRO_P5A;
+	}
+	return otg_chg_current_temp;
+}
+
+static void step_otg_chg_work(struct work_struct *work)
+{
+	struct smb_charger *chg = container_of(work,
+			struct smb_charger, otg_chg_notify_work);
+	int rc = 0;
+	int temp = 0;
+	int otg_chg_current_temp = 0;
+	union power_supply_propval prop = {0, };
+
+	rc = smblib_get_prop_from_bms(chg,
+		POWER_SUPPLY_PROP_TEMP, &prop);
+
+	if (rc < 0) {
+		pr_err("Couldn't read temp rc=%d\n", rc);
+		goto exit_work;
+	}
+
+	temp = prop.intval;
+
+	otg_chg_current_temp = lct_get_otg_chg_current(temp);
+
+	if ((otg_chg_current_temp == 0)
+			|| (chg->otg_chg_current == otg_chg_current_temp))
+		goto exit_work;
+	else
+		chg->otg_chg_current = otg_chg_current_temp;
+
+	rerun_reverse_check(chg);
+
+exit_work:
+	return;
+}
+
+static int step_otg_chg_notifier_call(struct notifier_block *nb,
+				unsigned long event, void *data)
+{
+	struct smb_charger *chg = container_of(nb, struct smb_charger,
+			otg_step_nb);
+	struct power_supply *psy = data;
+
+	if (event != PSY_EVENT_PROP_CHANGED)
+		return NOTIFY_OK;
+
+	if (!chg->reverse_charge_state)
+		return NOTIFY_OK;
+
+	if ((strcmp(psy->desc->name, "battery") == 0)
+			|| (strcmp(psy->desc->name, "usb") == 0)) {
+		__pm_wakeup_event(&chg->step_otg_chg_ws,
+				OTG_WAKELOCK_HOLD_TIME);
+		schedule_work(&chg->otg_chg_notify_work);
+	}
+
+	return NOTIFY_OK;
+}
+
+static int step_otg_chg_register_notifier(struct smb_charger *chg)
+{
+	int rc;
+
+	chg->otg_step_nb.notifier_call = step_otg_chg_notifier_call;
+	rc = power_supply_reg_notifier(&chg->otg_step_nb);
+	if (rc < 0) {
+		pr_err("Couldn't register psy notifier rc = %d\n", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+static int init_otg_step_chg(struct smb_charger *chg)
+{
+	int rc = 0;
+
+	wakeup_source_init(&chg->step_otg_chg_ws, "lct-step-otg-chg");
+	rc = step_otg_chg_register_notifier(chg);
+	if (rc < 0)
+		pr_err("Couldn't register psy notifier rc = %d\n", rc);
+
+	return rc;
+}
+#endif
+
 static int smb5_show_charger_status(struct smb5 *chip)
 {
 	struct smb_charger *chg = &chip->chg;
@@ -4224,6 +4439,10 @@ struct usbpd *smb_get_usbpd(void)
 }
 EXPORT_SYMBOL(smb_get_usbpd);
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+extern struct usbpd *smb_get_g_pd(void);
+#endif
+
 static int smb5_probe(struct platform_device *pdev)
 {
 	struct smb5 *chip;
@@ -4248,6 +4467,9 @@ static int smb5_probe(struct platform_device *pdev)
 	chg->otg_present = false;
 	chg->main_fcc_max = -EINVAL;
 	mutex_init(&chg->adc_lock);
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	chg->otg_chg_current = MICRO_2PA;
+#endif
 
 	chg->regmap = dev_get_regmap(chg->dev->parent, NULL);
 	if (!chg->regmap) {
@@ -4268,8 +4490,13 @@ static int smb5_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	if (chg->use_bq_pump)
+	if (chg->use_bq_pump) {
 		__smbchg = chg;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		if (!__smbchg->pd)
+			__smbchg->pd = smb_get_g_pd();
+#endif
+	}
 
 	if (alarmtimer_get_rtcdev())
 		alarm_init(&chg->lpd_recheck_timer, ALARM_REALTIME,
@@ -4435,6 +4662,13 @@ static int smb5_probe(struct platform_device *pdev)
 
 	pr_info("QPNP SMB5 probed successfully\n");
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	INIT_WORK(&chg->otg_chg_notify_work, step_otg_chg_work);
+	rc = init_otg_step_chg(chg);
+	if (rc < 0)
+		pr_err("Failed to init otg step chg, rc=%d\n", rc);
+#endif
+
 	return rc;
 
 free_irq:
@@ -4450,6 +4684,11 @@ static int smb5_remove(struct platform_device *pdev)
 {
 	struct smb5 *chip = platform_get_drvdata(pdev);
 	struct smb_charger *chg = &chip->chg;
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	power_supply_unreg_notifier(&chg->otg_step_nb);
+	wakeup_source_trash(&chg->step_otg_chg_ws);
+#endif
 
 	/* force enable APSD */
 	smblib_masked_write(chg, USBIN_OPTIONS_1_CFG_REG,

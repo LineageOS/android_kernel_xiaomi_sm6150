@@ -35,8 +35,13 @@
 #define OUTPUT_HIGH				(0x1 << 1)
 #define OUTPUT_LOW				0x1
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define ONE_WIRE_CONFIG_OUT		writel_relaxed(DRV_STRENGTH_16MA | GPIO_OUTPUT | GPIO_PULL_UP, g_onewire_data->gpio_cfg66_reg)// OUT
+#define ONE_WIRE_CONFIG_IN		writel_relaxed(DRV_STRENGTH_16MA | GPIO_INPUT | GPIO_PULL_UP, g_onewire_data->gpio_cfg66_reg)// IN
+#else
 #define ONE_WIRE_CONFIG_OUT		writel_relaxed(DRV_STRENGTH_4MA | GPIO_OUTPUT | GPIO_PULL_UP, g_onewire_data->gpio_cfg66_reg)// OUT
 #define ONE_WIRE_CONFIG_IN		writel_relaxed(DRV_STRENGTH_4MA | GPIO_INPUT | GPIO_PULL_UP, g_onewire_data->gpio_cfg66_reg)// IN
+#endif
 #define ONE_WIRE_OUT_HIGH		writel_relaxed(OUTPUT_HIGH, g_onewire_data->gpio_in_out_reg)// OUT: 1
 #define ONE_WIRE_OUT_LOW		writel_relaxed(OUTPUT_LOW, g_onewire_data->gpio_in_out_reg)// OUT: 0
 
@@ -112,6 +117,12 @@ unsigned char read_bit(void)
 
 	ONE_WIRE_CONFIG_OUT;
 	ONE_WIRE_OUT_LOW;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	ONE_WIRE_CONFIG_IN;
+	vamm = readl_relaxed(g_onewire_data->gpio_in_out_reg); // Read
+	Delay_us(15);
+	return((unsigned char)vamm & 0x01);
+#else
 	Delay_us(1);////
 	ONE_WIRE_CONFIG_IN;
 #ifdef CONFIG_K6_CHARGE
@@ -125,10 +136,14 @@ unsigned char read_bit(void)
 	ONE_WIRE_CONFIG_OUT;
 	Delay_us(6);
 	return((unsigned char)vamm & 0x01);
+#endif
 }
 
 void write_bit(char bitval)
 {
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	ONE_WIRE_CONFIG_OUT;
+#endif
 	ONE_WIRE_OUT_LOW;
 	Delay_us(1);//
 	if (bitval != 0)
@@ -438,6 +453,9 @@ static int onewire_gpio_probe(struct platform_device *pdev)
 		goto onewire_pinctrl_err;
 
 	// request onewire gpio
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	gpio_free(onewire_data->ow_gpio);
+#endif
 	if (gpio_is_valid(onewire_data->ow_gpio)) {
 		retval = gpio_request(onewire_data->ow_gpio,
 						"onewire gpio");

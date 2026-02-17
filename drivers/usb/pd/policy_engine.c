@@ -369,6 +369,8 @@ module_param(min_sink_current, int, 0600);
 
 #ifdef CONFIG_CC_SRC_LIMIT
 static const u32 default_src_caps[] = { 0x36019032 };	/* VSafe5V @ 0.5A */
+#elif defined(CONFIG_MACH_XIAOMI_SURYA)
+static const u32 default_src_caps[] = { 0x3601912C };	/* VSafe5V @ 3A */
 #else
 static const u32 default_src_caps[] = { 0x36019096 };   /* VSafe5V @ 1.5A */
 #endif
@@ -2694,7 +2696,9 @@ static void usbpd_sm(struct work_struct *w)
 	int ret, ms;
 	struct rx_msg *rx_msg = NULL;
 	unsigned long flags;
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 	s64 dr_swap_delta;
+#endif
 
 	usbpd_dbg(&pd->dev, "handle state %s\n",
 			usbpd_state_strings[pd->current_state]);
@@ -2987,6 +2991,7 @@ static void usbpd_sm(struct work_struct *w)
 				break;
 			}
 
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 			dr_swap_delta = ktime_ms_delta(ktime_get(),
 						pd->dr_swap_recvd_time);
 			if (dr_swap_delta > DR_SWAP_RESPONSE_TIME) {
@@ -2994,6 +2999,7 @@ static void usbpd_sm(struct work_struct *w)
 								dr_swap_delta);
 				break;
 			}
+#endif
 
 			ret = pd_send_msg(pd, MSG_ACCEPT, NULL, 0, SOP_MSG);
 			if (ret) {
@@ -3277,6 +3283,7 @@ static void usbpd_sm(struct work_struct *w)
 				break;
 			}
 
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 			dr_swap_delta = ktime_ms_delta(ktime_get(),
 						pd->dr_swap_recvd_time);
 			if (dr_swap_delta > DR_SWAP_RESPONSE_TIME) {
@@ -3284,6 +3291,7 @@ static void usbpd_sm(struct work_struct *w)
 								dr_swap_delta);
 				break;
 			}
+#endif
 
 			ret = pd_send_msg(pd, MSG_ACCEPT, NULL, 0, SOP_MSG);
 			if (ret) {
@@ -3304,6 +3312,18 @@ static void usbpd_sm(struct work_struct *w)
 			usbpd_set_state(pd, PE_PRS_SNK_SRC_TRANSITION_TO_OFF);
 			break;
 		} else if (IS_CTRL(rx_msg, MSG_VCONN_SWAP)) {
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+			if (!pd->vconn_is_external &&
+					(pd->requested_voltage > 5000000)) {
+				ret = pd_send_msg(pd, MSG_REJECT,
+						NULL, 0, SOP_MSG);
+				if (ret) {
+					usbpd_set_state(pd, PE_SEND_SOFT_RESET);
+					break;
+				}
+				break;
+			}
+#endif
 			ret = pd_send_msg(pd, MSG_ACCEPT, NULL, 0, SOP_MSG);
 			if (ret) {
 				usbpd_set_state(pd, PE_SEND_SOFT_RESET);
@@ -5186,6 +5206,15 @@ static void usbpd_release(struct device *dev)
 }
 
 static int num_pd_instances;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+static struct usbpd *g_pd;
+
+struct usbpd *smb_get_g_pd(void)
+{
+	return g_pd;
+}
+EXPORT_SYMBOL(smb_get_g_pd);
+#endif
 
 /**
  * usbpd_create - Create a new instance of USB PD protocol/policy engine
@@ -5443,6 +5472,10 @@ struct usbpd *usbpd_create(struct device *parent)
 	/* force read initial power_supply values */
 	psy_changed(&pd->psy_nb, PSY_EVENT_PROP_CHANGED, pd->usb_psy);
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	if (!g_pd)
+		g_pd = pd;
+#endif
 	return pd;
 
 del_inst:
