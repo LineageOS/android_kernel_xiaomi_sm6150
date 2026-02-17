@@ -43,7 +43,11 @@ module_param_named(
 	fvss_soc_interval_ms, qg_fvss_delta_soc_interval_ms, int, 0600
 );
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+static int qg_delta_soc_cold_interval_ms = 60000;
+#else
 static int qg_delta_soc_cold_interval_ms = 25000;
+#endif
 module_param_named(
 	soc_cold_interval_ms, qg_delta_soc_cold_interval_ms, int, 0600
 );
@@ -173,7 +177,11 @@ static int qg_process_tcss_soc(struct qpnp_qg *chip, int sys_soc)
 	} else {
 		bat_health = prop.intval;
 	}
-	if (bat_health == POWER_SUPPLY_HEALTH_WARM || bat_health == POWER_SUPPLY_HEALTH_OVERHEAT) {
+	if (bat_health == POWER_SUPPLY_HEALTH_WARM || bat_health == POWER_SUPPLY_HEALTH_OVERHEAT
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		|| bat_health == POWER_SUPPLY_HEALTH_COOL
+#endif
+	) {
 		pr_err("bat_health not good, %d\n", bat_health);
 		goto exit_soc_scale;
 	}

@@ -1400,18 +1400,21 @@ static int bq2597x_get_work_mode(struct bq2597x *bq, int *mode)
 static int bq2597x_detect_device(struct bq2597x *bq)
 {
 	int ret;
-	u8 data;
+	u8 data = 0;
 
 	ret = bq2597x_read_byte(bq, BQ2597X_REG_13, &data);
-	if (ret == 0) {
-		bq->part_no = (data & BQ2597X_DEV_ID_MASK);
-		bq->part_no >>= BQ2597X_DEV_ID_SHIFT;
-	}
+	if (ret)
+		return ret;
 
-	if (data == SC8551_DEVICE_ID)
-		bq->chip_vendor = SC8551;
-	else if (data == BQ25968_DEVICE_ID)
+	bq->part_no = (data & BQ2597X_DEV_ID_MASK);
+	bq->part_no >>= BQ2597X_DEV_ID_SHIFT;
+
+	if (data == BQ25968_DEVICE_ID)
 		bq->chip_vendor = BQ25968;
+	else if (data == BQ25970_DEVICE_ID)
+		bq->chip_vendor = BQ25970;
+	else if (data == SC8551_DEVICE_ID)
+		bq->chip_vendor = SC8551;
 	else
 		bq->chip_vendor = BQ25970;
 
@@ -2056,6 +2059,7 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CP_VBAT_CALIBRATE:
 		val->intval = bq->vbat_calibrate;
+		break;
 	default:
 		return -EINVAL;
 

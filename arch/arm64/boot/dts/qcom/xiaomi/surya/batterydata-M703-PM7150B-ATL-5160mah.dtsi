@@ -23,6 +23,7 @@
 	qcom,battery-type = "m703-pm7150b-atl-5160mah";
 	qcom,qg-batt-profile-ver = <100>;
 	mi,six-pin-battery;
+	mi-ffc-current-cfg = <350 1160000 1160000 (-710) (-760)>;
 
 	qcom,jeita-fcc-ranges = <(-100)  0   450000
                                 1  50   950000

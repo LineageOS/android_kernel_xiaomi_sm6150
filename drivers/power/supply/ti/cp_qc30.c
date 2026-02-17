@@ -178,6 +178,27 @@ static int cp_get_effective_fcc_val(pm_t pm_state)
 	return effective_fcc_val;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+static int cp_get_effective_usb_icl_val(void)
+{
+	int effective_usb_icl_val = 0;
+
+	if (!pm_state.usb_icl_votable)
+		pm_state.usb_icl_votable = find_votable("USB_ICL");
+
+	if (!pm_state.usb_icl_votable) {
+		pr_err("[%s] find votable: USB_ICL failed!\n", __func__);
+		return -EINVAL;
+	}
+
+	effective_usb_icl_val = get_effective_result(pm_state.usb_icl_votable);
+	pr_info("effective_usb_icl_val: %d voted by:%s\n",
+		effective_usb_icl_val,
+		get_effective_client(pm_state.usb_icl_votable));
+	return effective_usb_icl_val;
+}
+#endif
+
 static struct power_supply *cp_get_fc_psy(void)
 {
 	if (!pm_state.fc_psy) {
@@ -308,6 +329,7 @@ static bool qc3_disable_cp_by_jeita_status(void)
 	}
 }
 
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 static int qc3_check_slowly_charging_enabled(void)
 {
 	int ret;
@@ -325,6 +347,7 @@ static int qc3_check_slowly_charging_enabled(void)
 
 	return ret;
 }
+#endif
 
 static void cp_get_batt_capacity(void)
 {
@@ -786,7 +809,9 @@ static int cp_flash2_charge(unsigned int port)
 				effective_ibus_val);
 
 	qc3_get_batt_current_thermal_level(&thermal_level);
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 	qc3_check_slowly_charging_enabled();
+#endif
 	pm_state.is_temp_out_fc2_range = qc3_disable_cp_by_jeita_status();
 	pr_info("is_temp_out_fc2_range:%d\n", pm_state.is_temp_out_fc2_range);
 
@@ -809,7 +834,7 @@ static int cp_flash2_charge(unsigned int port)
 				sys_config.ibat_minus_deviation_val = HVDCP3P5_IBAT_MINUS_DEV_VAL + 100;
 				sys_config.ibat_plus_deviation_val = HVDCP3P5_IBAT_PLUS_DEV_VAL - 50;
 				pm_state.batt_cell_volt_triggered = true;
-				pr_info("for qc3.5, cell_vbat > 4250mv or soc > 40%, modify bq adjust params\n");
+				pr_info("for qc3.5, cell_vbat > 4250mv or soc > 40%%, modify bq adjust params\n");
 			}
 		} else if (pm_state.usb_type == POWER_SUPPLY_TYPE_USB_HVDCP_3) {
 			if (pm_state.bq2597x.vbat_volt >= 4200 || pm_state.capacity > 29) {
@@ -818,10 +843,33 @@ static int cp_flash2_charge(unsigned int port)
 				sys_config.ibat_minus_deviation_val = HVDCP3_IBAT_MINUS_DEV_VAL + 450;
 				sys_config.ibat_plus_deviation_val = HVDCP3_IBAT_PLUS_DEV_VAL - 450;
 				pm_state.batt_cell_volt_triggered = true;
-				pr_info("for qc3.0, cell_vbat > 4200mv or soc > 29%, modify bq adjust params\n");
+				pr_info("for qc3.0, cell_vbat > 4200mv or soc > 29%%, modify bq adjust params\n");
 			}
 		}
 	}
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	/* reduce bus current in cv loop for QC3.5 */
+	if (pm_state.usb_type == POWER_SUPPLY_TYPE_USB_HVDCP_3P5) {
+		if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - QC3P5_BQ_TAPER_HYS_MV) {
+			if (ibus_lmt_change_timer++ > IBUS_CHANGE_TIMEOUT) {
+				ibus_lmt_change_timer = 0;
+				effective_fcc_val = cp_get_effective_fcc_val(pm_state);
+				effective_fcc_val -= QC3P5_BQ_TAPER_DECREASE_STEP_MA;
+				pr_err("bq set taper fcc to: %d mA\n", effective_fcc_val);
+				if (!pm_state.fcc_votable)
+					pm_state.fcc_votable = find_votable("FCC");
+				if (pm_state.fcc_votable) {
+					vote(pm_state.fcc_votable, QC3P5_BQ_TAPER_FCC_VOTER,
+						true, effective_fcc_val * 1000);
+					pr_err("qc3p5_taper_fcc_voter vote fcc\n");
+				}
+			}
+		} else {
+			ibus_lmt_change_timer = 0;
+		}
+	}
+#endif
 
 	pr_info("target: t_vbus=%d, t_ibus=%d(m:%d, p:%d), t_vbat=%d, t_ibat=%d(m:%d, p:%d)\n",
 			9500,
@@ -862,9 +910,11 @@ static int cp_flash2_charge(unsigned int port)
 			|| pm_state.is_temp_out_fc2_range) {
 		pr_info("thermal level too high or batt temp is out of fc2 range\n");
 		return CP_ENABLE_FAIL;
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 	} else if (pm_state.slowly_charging) {
 		pr_info("slowly charging feature is enabled!\n");
 		return CP_ENABLE_FAIL;
+#endif
 	}
 	if (pm_state.bq2597x.vbat_volt > sys_config.bat_volt_lp_lmt - 100 &&
 			pm_state.bq2597x.ibat_curr < sys_config.fc2_taper_current) {
@@ -936,6 +986,13 @@ void cp_statemachine(unsigned int port)
 
 	switch (pm_state.state) {
 	case CP_STATE_DISCONNECT:
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		if (!pm_state.fcc_votable)
+			pm_state.fcc_votable = find_votable("FCC");
+		if (pm_state.fcc_votable)
+			vote(pm_state.fcc_votable, QC3P5_BQ_TAPER_FCC_VOTER,
+					false, 0);
+#endif
 		if (pm_state.bq2597x.charge_enabled) {
 			cp_enable_fc(false);
 			cp_check_fc_enabled();
@@ -964,11 +1021,20 @@ void cp_statemachine(unsigned int port)
 		break;
 
 	case CP_STATE_ENTRY:
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		if (!pm_state.fcc_votable)
+			pm_state.fcc_votable = find_votable("FCC");
+		if (pm_state.fcc_votable)
+			vote(pm_state.fcc_votable, QC3P5_BQ_TAPER_FCC_VOTER,
+					false, 0);
+#endif
 		cp_config_max_vbat();
 		cp_get_usb_type();
 		cp_get_batt_capacity();
 		qc3_get_batt_current_thermal_level(&thermal_level);
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 		qc3_check_slowly_charging_enabled();
+#endif
 		pm_state.is_temp_out_fc2_range = qc3_disable_cp_by_jeita_status();
 		pr_info("is_temp_out_fc2_range:%d\n", pm_state.is_temp_out_fc2_range);
 
@@ -983,7 +1049,10 @@ void cp_statemachine(unsigned int port)
 			cp_reset_vbus_volt();
 			msleep(100);
 			if (thermal_level >= MAX_THERMAL_LEVEL
-					|| pm_state.slowly_charging || pm_state.is_temp_out_fc2_range) {
+#ifndef CONFIG_MACH_XIAOMI_SURYA
+					|| pm_state.slowly_charging
+#endif
+					|| pm_state.is_temp_out_fc2_range) {
 				cp_move_state(CP_STATE_SW_ENTRY);
 				pr_info("thermal too high or batt temp out of range or slowly charging, waiting...\n");
 			} else if (pm_state.bq2597x.vbat_volt < sys_config.min_vbat_start_flash2) {
@@ -999,6 +1068,13 @@ void cp_statemachine(unsigned int port)
 		break;
 
 	case CP_STATE_SW_ENTRY:
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		if (!pm_state.fcc_votable)
+			pm_state.fcc_votable = find_votable("FCC");
+		if (pm_state.fcc_votable)
+			vote(pm_state.fcc_votable, QC3P5_BQ_TAPER_FCC_VOTER,
+					false, 0);
+#endif
 		cp_reset_vbus_volt();
 		if (pm_state.bq2597x.charge_enabled) {
 			cp_enable_fc(false);
@@ -1012,6 +1088,15 @@ void cp_statemachine(unsigned int port)
 	case CP_STATE_SW_ENTRY_2:
 		pr_info("enable sw charger and check enable\n");
 		cp_enable_sw(true);
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		{
+			int usb_icl_value = cp_get_effective_usb_icl_val();
+			if (pm_state.usb_icl_votable &&
+					(usb_icl_value < QC3_MAIN_CHARGER_ICL))
+				vote(pm_state.usb_icl_votable, MAIN_CHG_VOTER,
+					true, QC3_MAIN_CHARGER_ICL);
+		}
+#endif
 		cp_update_sw_status();
 		if (pm_state.sw_chager.charge_enabled)
 			cp_move_state(CP_STATE_SW_LOOP);
@@ -1025,8 +1110,14 @@ void cp_statemachine(unsigned int port)
 		}
 
 		pm_state.is_temp_out_fc2_range = qc3_disable_cp_by_jeita_status();
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 		qc3_check_slowly_charging_enabled();
-		if (thermal_level < MAX_THERMAL_LEVEL && !pm_state.slowly_charging && !pm_state.is_temp_out_fc2_range && recovery) {
+#endif
+		if (thermal_level < MAX_THERMAL_LEVEL
+#ifndef CONFIG_MACH_XIAOMI_SURYA
+				&& !pm_state.slowly_charging
+#endif
+				&& !pm_state.is_temp_out_fc2_range && recovery) {
 			if (tune_vbus_count >= 2) {
 				pr_info("unsupport qc3, use sw charging\n");
 				break;
@@ -1046,6 +1137,15 @@ void cp_statemachine(unsigned int port)
 			if (pm_state.bq2597x.vbat_volt > sys_config.min_vbat_start_flash2) {
 				pr_info("battery volt: %d is ok, proceeding to flash charging...\n",
 					pm_state.bq2597x.vbat_volt);
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+				{
+					int usb_icl_value = cp_get_effective_usb_icl_val();
+					if (pm_state.usb_icl_votable &&
+							(usb_icl_value > QC3_CHARGER_ICL))
+						vote(pm_state.usb_icl_votable, MAIN_CHG_VOTER,
+							true, QC3_CHARGER_ICL);
+				}
+#endif
 				cp_move_state(CP_STATE_FLASH2_ENTRY);
 			}
 		}
@@ -1261,7 +1361,8 @@ static void cp_workfunc(struct work_struct *work)
 #else
 		schedule_delayed_work(&pm_state.qc3_pm_work, HZ);
 #endif
-	} else if (pm_state.usb_type == POWER_SUPPLY_TYPE_USB_HVDCP_3P5) {
+	} else if (sys_config.qc3p5_supported
+			&& pm_state.usb_type == POWER_SUPPLY_TYPE_USB_HVDCP_3P5) {
 		schedule_delayed_work(&pm_state.qc3_pm_work, msecs_to_jiffies(100));
 	}
 }
