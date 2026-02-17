@@ -452,6 +452,10 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(apsd_rerun),
 	POWER_SUPPLY_ATTR(apsd_timeout),
 	/* Charge pump properties */
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	POWER_SUPPLY_ATTR(qc3p5_power_limit),
+	POWER_SUPPLY_ATTR(qc3p5_current_max),
+#endif
 	POWER_SUPPLY_ATTR(cp_status1),
 	POWER_SUPPLY_ATTR(cp_status2),
 	POWER_SUPPLY_ATTR(cp_enable),
@@ -499,6 +503,10 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(page1_data),
 	POWER_SUPPLY_ATTR(verify_model_name),
 	POWER_SUPPLY_ATTR(chip_ok),
+#endif
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	POWER_SUPPLY_ATTR(reverse_charge_mode),
+	POWER_SUPPLY_ATTR(charge_awake_state),
 #endif
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),

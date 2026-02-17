@@ -959,6 +959,10 @@ int smblib_set_fastcharge_mode(struct smb_charger *chg, bool enable)
 	if (enable) {
 		/* ffc need clear 4.4V non_fcc_vfloat_voter first */
 		vote(chg->fv_votable, NON_FFC_VFLOAT_VOTER, false, 0);
+#if defined(CONFIG_BATT_VERIFY_BY_DS28E16) && defined(CONFIG_MACH_XIAOMI_SURYA)
+		schedule_delayed_work(&chg->charger_soc_decimal,
+				msecs_to_jiffies(CHARGER_SOC_DECIMAL_MS));
+#endif
 		rc = power_supply_get_property(chg->bms_psy,
 				POWER_SUPPLY_PROP_FFC_CHG_TERMINATION_CURRENT, &pval);
 		if (rc < 0) {
@@ -1419,7 +1423,7 @@ static const struct apsd_result *smblib_update_usb_type(struct smb_charger *chg)
 	if (chg->pd_active) {
 		chg->real_charger_type = POWER_SUPPLY_TYPE_USB_PD;
 		chg->usb_psy_desc.type = POWER_SUPPLY_TYPE_USB_PD;
-	} else if (chg->qc3p5_detected) {
+	} else if (chg->qc3p5_detected && chg->qc3p5_supported) {
 		chg->real_charger_type = POWER_SUPPLY_TYPE_USB_HVDCP_3P5;
 	} else {
 		/*
@@ -2740,6 +2744,18 @@ int smblib_get_prop_batt_health(struct smb_charger *chg,
 done:
 	return rc;
 }
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+int smblib_get_prop_batt_awake(struct smb_charger *chg,
+				union power_supply_propval *val)
+{
+	int rc = 0;
+	int effective_awake_state;
+	effective_awake_state = get_effective_result_locked(chg->awake_votable);
+	val->intval = effective_awake_state;
+	return rc;
+}
+#endif
 
 int smblib_get_prop_system_temp_level(struct smb_charger *chg,
 				union power_supply_propval *val)
@@ -6605,9 +6621,10 @@ static int check_reduce_fcc_condition(struct smb_charger *chg)
 
 	if (!chg->cp_psy) {
 		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
-		if (!chg->cp_psy)
+		if (!chg->cp_psy) {
 			pr_err("cp_psy not found\n");
 			return 0;
+		}
 	}
 
 	rc = power_supply_get_property(chg->cp_psy,
@@ -6702,6 +6719,17 @@ static void reduce_fcc_work(struct work_struct *work)
 	schedule_delayed_work(&chg->reduce_fcc_work,
 				msecs_to_jiffies(esr_work_time));
 }
+
+#if defined(CONFIG_BATT_VERIFY_BY_DS28E16) && defined(CONFIG_MACH_XIAOMI_SURYA)
+static void smblib_charger_soc_decimal(struct work_struct *work)
+{
+	struct smb_charger *chg = container_of(work, struct smb_charger,
+						charger_soc_decimal.work);
+
+	if (chg->bms_psy)
+		power_supply_changed(chg->bms_psy);
+}
+#endif
 static void smblib_micro_usb_plugin(struct smb_charger *chg, bool vbus_rising)
 {
 	if (!vbus_rising) {
@@ -7792,6 +7820,11 @@ static void typec_sink_removal(struct smb_charger *chg)
 			smblib_notify_usb_host(chg, false);
 		chg->otg_present = false;
 	}
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	chg->reverse_charge_mode = false;
+	chg->reverse_charge_state = false;
+#endif
 }
 
 static void typec_src_removal(struct smb_charger *chg)
@@ -8124,6 +8157,15 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
 			&& (typec_mode != chg->typec_mode))
 		smblib_handle_rp_change(chg, typec_mode);
 	chg->typec_mode = typec_mode;
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	if (chg->typec_mode == POWER_SUPPLY_TYPEC_SINK) {
+		if (gpio_is_valid(chg->switch_sel_gpio))
+			gpio_set_value(chg->switch_sel_gpio, 0);
+		chg->reverse_charge_mode = false;
+		chg->reverse_charge_state = false;
+	}
+#endif
 
 	smblib_dbg(chg, PR_OEM, "IRQ: cc-state-change; Type-C %s detected\n",
 				smblib_typec_mode_name[chg->typec_mode]);
@@ -8669,15 +8711,19 @@ static int smblib_get_step_vfloat_index(struct smb_charger *chg,
 				int val)
 {
 	int i;
+	int count = chg->six_pin_step_cfg_count;
 
 	/* select correct index by compare start_vbat and range vfloat threshold */
-	for (i = 0; i <= ARRAY_SIZE(chg->six_pin_step_cfg) - 1; i++) {
+	if (count <= 0)
+		return 0;
+
+	for (i = 0; i < count; i++) {
 		if (val < (chg->six_pin_step_cfg[i].vfloat_step_uv - VBAT_FOR_STEP_HYS_UV))
 			break;
 	}
 
-	if (i >= ARRAY_SIZE(chg->six_pin_step_cfg) - 1)
-		return ARRAY_SIZE(chg->six_pin_step_cfg) - 1;
+	if (i >= count - 1)
+		return count - 1;
 
 	return i;
 }
@@ -8691,6 +8737,7 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 	int input_present;
 	int main_charge_type;
 	int interval_ms = STEP_CHG_DELAYED_MONITOR_MS;
+	int cfg_count = chg->six_pin_step_cfg_count;
 	union power_supply_propval pval = {0, };
 
 	rc = smblib_is_input_present(chg, &input_present);
@@ -8699,6 +8746,9 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 
 	pr_err("input_present: %d\n", input_present);
 	if (input_present == INPUT_NOT_PRESENT) {
+		chg->init_start_vbat_checked = false;
+		chg->trigger_taper_count = 0;
+		chg->index_vfloat = 0;
 		if (is_client_vote_enabled(chg->fv_votable,
 						SIX_PIN_VFLOAT_VOTER))
 			vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER, false, 0);
@@ -8708,13 +8758,50 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 		return;
 	}
 
+	if (cfg_count <= 0)
+		return;
+
 	if (chg->start_step_vbat >= VBAT_FOR_STEP_MIN_UV) {
 		pr_err("start step vbat is too high, no need do step charge\n");
 		return;
 	}
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	rc = power_supply_get_property(chg->bms_psy,
+					POWER_SUPPLY_PROP_TEMP, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't get bms temp:%d\n", rc);
+		return;
+	}
+
+	if (pval.intval >= 480 || pval.intval <= 150) {
+		smblib_dbg(chg, PR_MISC, "temp:%d is abort do not set step charge work\n",
+				pval.intval);
+		if (is_client_vote_enabled(chg->fv_votable,
+						SIX_PIN_VFLOAT_VOTER))
+			vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER, false, 0);
+		if (is_client_vote_enabled(chg->fcc_votable,
+						SIX_PIN_VFLOAT_VOTER))
+			vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER, false, 0);
+		return;
+	}
+#endif
+
 	/* set init start vfloat according to chg->start_step_vbat */
 	if (!chg->init_start_vbat_checked) {
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		if (chg->six_pin_step_cfg_2_count == chg->six_pin_step_cfg_count &&
+				chg->six_pin_step_cfg_2_count > 0) {
+			rc = smblib_get_prop_from_bms(chg,
+					POWER_SUPPLY_PROP_BATTERY_TYPE, &pval);
+			if (rc >= 0 && pval.strval &&
+					!strcmp(pval.strval, "m703-atl-6000mah")) {
+				memcpy(chg->six_pin_step_cfg, chg->six_pin_step_cfg_2,
+						sizeof(chg->six_pin_step_cfg));
+			}
+		}
+#endif
+
 		chg->index_vfloat =
 				smblib_get_step_vfloat_index(chg, chg->start_step_vbat);
 		vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER,
@@ -8732,6 +8819,67 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 	main_charge_type = pval.intval;
 	pr_err("main_charge_type: %d\n", main_charge_type);
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	{
+		int capacity = 0;
+		int ibat_ua = 0;
+		int fcc_ua = 0;
+
+		rc = smblib_get_prop_batt_capacity(chg, &pval);
+		if (rc < 0) {
+			pr_err("Couldn't get batt capacity rc=%d\n", rc);
+			return;
+		}
+		capacity = pval.intval;
+
+		if (main_charge_type == POWER_SUPPLY_CHARGE_TYPE_TAPER &&
+				capacity > TAPER_BATT_CAPACITY_THR) {
+			fcc_ua = get_effective_result(chg->fcc_votable) - TAPER_DECREASE_FCC_UA;
+			pr_err("taper from main charger, reducing FCC to %duA\n", fcc_ua);
+
+			if (fcc_ua < MIN_TAPER_FCC_THR_UA)
+				goto out;
+			if ((chg->index_vfloat < cfg_count - 1) &&
+					(fcc_ua > chg->six_pin_step_cfg[chg->index_vfloat + 1].fcc_step_ua))
+				vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER, true, fcc_ua);
+		}
+
+		rc = smblib_get_prop_from_bms(chg,
+				POWER_SUPPLY_PROP_CURRENT_NOW, &pval);
+		if (rc < 0) {
+			pr_err("Couldn't get ibat from bms rc=%d\n", rc);
+			return;
+		}
+
+		ibat_ua = -pval.intval;
+		pr_err("ibat_ua: %d\n", ibat_ua);
+
+		if (main_charge_type == POWER_SUPPLY_CHARGE_TYPE_TAPER &&
+				(capacity > TAPER_BATT_CAPACITY_THR) &&
+				(chg->index_vfloat < (cfg_count - 1)) &&
+				(ibat_ua <= (chg->six_pin_step_cfg[chg->index_vfloat + 1].fcc_step_ua +
+					TAPER_IBAT_TRH_HYS_UA)))
+			chg->trigger_taper_count++;
+		else
+			chg->trigger_taper_count = 0;
+
+		if (chg->trigger_taper_count >= MAX_COUNT_OF_IBAT_STEP) {
+			chg->index_vfloat++;
+			chg->trigger_taper_count = 0;
+			if (chg->index_vfloat >= cfg_count)
+				chg->index_vfloat = cfg_count - 1;
+			vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER,
+					true, chg->six_pin_step_cfg[chg->index_vfloat].fcc_step_ua);
+			vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER,
+					true, chg->six_pin_step_cfg[chg->index_vfloat].vfloat_step_uv);
+		}
+out:
+		if (main_charge_type == POWER_SUPPLY_CHARGE_TYPE_TAPER)
+			interval_ms = STEP_CHG_DELAYED_QUICK_MONITOR_MS;
+		else
+			interval_ms = STEP_CHG_DELAYED_MONITOR_MS;
+	}
+#else
 	if (main_charge_type == POWER_SUPPLY_CHARGE_TYPE_TAPER)
 		chg->trigger_taper_count++;
 	else
@@ -8740,20 +8888,21 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 	if (chg->trigger_taper_count >= MAX_COUNT_OF_IBAT_STEP) {
 		chg->index_vfloat++;
 		chg->trigger_taper_count = 0;
-		if (chg->index_vfloat < MAX_STEP_ENTRIES) {
+		if (chg->index_vfloat < cfg_count) {
 			vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER,
 					true, chg->six_pin_step_cfg[chg->index_vfloat].fcc_step_ua);
 			vote(chg->fv_votable, SIX_PIN_VFLOAT_VOTER,
 					true, chg->six_pin_step_cfg[chg->index_vfloat].vfloat_step_uv);
 		}
-		if (chg->index_vfloat >= MAX_STEP_ENTRIES)
-			chg->index_vfloat = MAX_STEP_ENTRIES - 1;
+		if (chg->index_vfloat >= cfg_count)
+			chg->index_vfloat = cfg_count - 1;
 	}
 
 	if (main_charge_type == POWER_SUPPLY_CHARGE_TYPE_TAPER)
 		interval_ms = STEP_CHG_DELAYED_QUICK_MONITOR_MS;
 	else
 		interval_ms = STEP_CHG_DELAYED_MONITOR_MS;
+#endif
 
 	schedule_delayed_work(&chg->six_pin_batt_step_chg_work,
 				msecs_to_jiffies(interval_ms));
@@ -9720,6 +9869,65 @@ static void smblib_dual_role_check_work(struct work_struct *work)
 	vote(chg->awake_votable, DR_SWAP_VOTER, false, 0);
 }
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+static void lct_vbus_enable(struct smb_charger *chg, bool enable)
+{
+	int rc;
+
+	if (enable) {
+		smblib_dbg(chg, PR_OTG, "enabling VBUS in OTG mode\n");
+		rc = smblib_masked_write(chg, DCDC_CMD_OTG_REG,
+					OTG_EN_BIT, OTG_EN_BIT);
+		if (rc < 0) {
+			smblib_err(chg,
+				"Couldn't enable VBUS in OTG mode rc=%d\n", rc);
+			return;
+		}
+	} else {
+		smblib_dbg(chg, PR_OTG, "disabling VBUS in OTG mode\n");
+		rc = smblib_masked_write(chg, DCDC_CMD_OTG_REG,
+					OTG_EN_BIT, 0);
+		if (rc < 0) {
+			smblib_err(chg,
+				"Couldn't disable VBUS in OTG mode rc=%d\n",
+				rc);
+			return;
+		}
+	}
+}
+
+void rerun_reverse_check(struct smb_charger *chg)
+{
+	int rc;
+
+	if (chg->reverse_charge_state != chg->reverse_charge_mode)
+		chg->reverse_charge_state = chg->reverse_charge_mode;
+
+	lct_vbus_enable(chg, false);
+
+	rc = smblib_set_charge_param(chg, &chg->param.otg_cl,
+			chg->otg_chg_current);
+
+	if (rc < 0)
+		pr_err("Couldn't set otg current limit rc=%d\n", rc);
+
+	if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_PD) {
+		if (chg->reverse_charge_mode &&
+				(chg->typec_mode == POWER_SUPPLY_TYPEC_SINK)) {
+			if (gpio_is_valid(chg->switch_sel_gpio))
+				gpio_set_value(chg->switch_sel_gpio, 1);
+		} else {
+			if (gpio_is_valid(chg->switch_sel_gpio))
+				gpio_set_value(chg->switch_sel_gpio, 0);
+		}
+	}
+
+	msleep(500);
+
+	lct_vbus_enable(chg, true);
+}
+#endif
+
 static void smblib_status_report_work(struct work_struct *work)
 {
 	struct smb_charger *chg = container_of(work, struct smb_charger,
@@ -9981,6 +10189,9 @@ int smblib_init(struct smb_charger *chg)
 	INIT_DELAYED_WORK(&chg->lpd_ra_open_work, smblib_lpd_ra_open_work);
 	INIT_DELAYED_WORK(&chg->lpd_detach_work, smblib_lpd_detach_work);
 	INIT_WORK(&chg->batt_verify_update_work, smblib_batt_verify_update_work);
+#if defined(CONFIG_BATT_VERIFY_BY_DS28E16) && defined(CONFIG_MACH_XIAOMI_SURYA)
+	INIT_DELAYED_WORK(&chg->charger_soc_decimal, smblib_charger_soc_decimal);
+#endif
 	INIT_DELAYED_WORK(&chg->raise_qc3_vbus_work, smblib_raise_qc3_vbus_work);
 	INIT_DELAYED_WORK(&chg->charger_type_recheck, smblib_charger_type_recheck);
 	INIT_DELAYED_WORK(&chg->status_report_work, smblib_status_report_work);
@@ -10168,6 +10379,9 @@ int smblib_deinit(struct smb_charger *chg)
 		cancel_delayed_work_sync(&chg->lpd_ra_open_work);
 		cancel_delayed_work_sync(&chg->lpd_detach_work);
 		cancel_work_sync(&chg->batt_verify_update_work);
+#if defined(CONFIG_BATT_VERIFY_BY_DS28E16) && defined(CONFIG_MACH_XIAOMI_SURYA)
+		cancel_delayed_work_sync(&chg->charger_soc_decimal);
+#endif
 		cancel_delayed_work_sync(&chg->raise_qc3_vbus_work);
 		cancel_delayed_work_sync(&chg->charger_type_recheck);
 		cancel_delayed_work_sync(&chg->status_report_work);
@@ -10179,6 +10393,10 @@ int smblib_deinit(struct smb_charger *chg)
 		cancel_delayed_work_sync(&chg->conn_therm_work);
 		cancel_delayed_work_sync(&chg->usbov_dbc_work);
 		cancel_delayed_work_sync(&chg->six_pin_batt_step_chg_work);
+		if (chg->use_bq_pump) {
+			cancel_delayed_work_sync(&chg->reduce_fcc_work);
+			cancel_delayed_work_sync(&chg->thermal_setting_work);
+		}
 		cancel_delayed_work_sync(&chg->role_reversal_check);
 		cancel_delayed_work_sync(&chg->pr_swap_detach_work);
 		power_supply_unreg_notifier(&chg->nb);

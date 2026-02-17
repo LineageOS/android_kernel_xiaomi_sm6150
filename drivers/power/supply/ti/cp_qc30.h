@@ -100,13 +100,28 @@ enum hvdcp3_type {
 #define HVDCP3P5_IBAT_PLUS_DEV_VAL			200
 
 #define MAX_THERMAL_LEVEL			13
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define MAIN_CHG_VOTER				"MAIN_CHG_VOTER"
+#define QC3_MAIN_CHARGER_ICL			2000000
+#define QC3_CHARGER_ICL				500000
+#define QC3P5_BQ_TAPER_FCC_VOTER		"QC3P5_BQ_TAPER_FCC_VOTER"
+#define QC3P5_BQ_TAPER_HYS_MV			30
+#define QC3P5_BQ_TAPER_DECREASE_STEP_MA		200
+#endif
+
 /* jeita related */
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define JEITA_WARM_THR			450
+#define JEITA_COOL_NOT_ALLOW_CP_THR			100
+#else
 #ifdef CONFIG_K6_CHARGE
 #define JEITA_WARM_THR			480
 #define JEITA_COOL_NOT_ALLOW_CP_THR			100
 #else
 #define JEITA_WARM_THR			480
 #define JEITA_COOL_NOT_ALLOW_CP_THR			100
+#endif
 #endif
 
 
@@ -227,6 +242,9 @@ typedef struct {
 	struct bq2597x			bq2597x;
 	struct sw_charger			sw_chager;
 	struct votable		*fcc_votable;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	struct votable		*usb_icl_votable;
+#endif
 
 	struct power_supply *fc_psy;
 	struct power_supply *sw_psy;

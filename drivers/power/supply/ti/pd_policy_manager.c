@@ -32,7 +32,12 @@
 #define PD_SRC_PDO_TYPE_VARIABLE	2
 #define PD_SRC_PDO_TYPE_AUGMENTED	3
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define BATT_MAX_CHG_VOLT		4450
+#define BATT_WARM_CHG_VOLT		4100
+#else
 #define BATT_MAX_CHG_VOLT		4400
+#endif
 #define BATT_FAST_CHG_CURR		6000
 #define	BUS_OVP_THRESHOLD		12000
 #define	BUS_OVP_ALARM_THRESHOLD		9500
@@ -79,7 +84,11 @@ static struct pdpm_config pm_config = {
 	.min_adapter_volt_required	= 10000,
 	.min_adapter_curr_required	= 2000,
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	.min_vbat_for_cp		= 3000,
+#else
 	.min_vbat_for_cp		= 3500,
+#endif
 
 	.cp_sec_enable			= false,
 	.fc2_disable_sw			= true,
@@ -88,7 +97,11 @@ static struct pdpm_config pm_config = {
 static struct usbpd_pm *__pdpm;
 
 static int fc2_taper_timer;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+static int cool_warm_overcharge_timer;
+#else
 static int cool_overcharge_timer;
+#endif
 static int ibus_lmt_change_timer;
 
 
@@ -146,6 +159,73 @@ static int pd_get_batt_current_thermal_level(struct usbpd_pm *pdpm, int *level)
 /* determine whether to disable cp according to jeita status */
 static bool pd_disable_cp_by_jeita_status(struct usbpd_pm *pdpm)
 {
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	union power_supply_propval pval = {0,};
+	int batt_temp = 0, bq_input_suspend = 0;
+	int rc;
+
+	usbpd_check_batt_psy(pdpm);
+
+	if (!pdpm->sw_psy)
+		return -ENODEV;
+
+	rc = power_supply_get_property(pdpm->sw_psy,
+				POWER_SUPPLY_PROP_BQ_INPUT_SUSPEND, &pval);
+
+	if (!rc)
+		bq_input_suspend = !!pval.intval;
+
+	if (!pdpm->bms_psy)
+		return false;
+
+	rc = power_supply_get_property(pdpm->bms_psy,
+				POWER_SUPPLY_PROP_TEMP, &pval);
+	if (rc < 0) {
+		pr_info("Couldn't get batt temp prop:%d\n", rc);
+		return false;
+	}
+
+	batt_temp = pval.intval;
+	pr_debug("batt_temp: %d\n", batt_temp);
+	if (bq_input_suspend) {
+		return true;
+	} else {
+		if (batt_temp >= JEITA_WARM_THR && !pdpm->jeita_triggered) {
+			pr_err("jeita upper limit reached, batt_temp:%d\n", batt_temp);
+			pdpm->jeita_triggered = true;
+			return true;
+		} else if (batt_temp <= JEITA_COOL_THR && !pdpm->jeita_triggered) {
+			pr_err("jeita lower limit reached, batt_temp:%d\n", batt_temp);
+			pdpm->jeita_triggered = true;
+			return true;
+		} else if (pdpm->bq_cool_warm_done) {
+			if (((pdpm->cp.vbat_volt < (pm_config.bat_volt_lp_lmt - 100)) &&
+					(batt_temp <= COOL_HYS_THRESHOLDS)) ||
+				((pdpm->cp.vbat_volt < (BATT_WARM_CHG_VOLT - 100)) &&
+					(batt_temp >= WARM_HYS_THRESHOLDS)) ||
+				((batt_temp < WARM_HYS_THRESHOLDS) &&
+					(batt_temp > COOL_HYS_THRESHOLDS))) {
+				pr_err("after cool and warm state recharge, batt_temp:%d,vbat_volt=%d,bat_volt_lp_lmt=%d,bq_cool_warm_done=%d\n",
+						batt_temp, pdpm->cp.vbat_volt,
+						pm_config.bat_volt_lp_lmt,
+						pdpm->bq_cool_warm_done);
+				pdpm->bq_cool_warm_done = false;
+				return false;
+			} else {
+				return true;
+			}
+
+		} else if ((batt_temp <= (JEITA_WARM_THR - JEITA_HYSTERESIS)) &&
+				(batt_temp >= (JEITA_COOL_THR + JEITA_HYSTERESIS)) &&
+				pdpm->jeita_triggered) {
+			pr_err("jeita returned to normal, batt_temp:%d\n", batt_temp);
+			pdpm->jeita_triggered = false;
+			return false;
+		} else {
+			return pdpm->jeita_triggered;
+		}
+	}
+#else
 	union power_supply_propval pval = {0,};
 	int batt_temp = 0, bq_input_suspend = 0;
 	int warm_thres, cool_thres;
@@ -206,6 +286,7 @@ static bool pd_disable_cp_by_jeita_status(struct usbpd_pm *pdpm)
 		return pdpm->jeita_triggered;
 	}
 
+#endif
 }
 
 static bool is_cool_charge(struct usbpd_pm *pdpm)
@@ -230,6 +311,31 @@ static bool is_cool_charge(struct usbpd_pm *pdpm)
 		return true;
 	return false;
 }
+
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+static bool is_warm_charge(struct usbpd_pm *pdpm)
+{
+	union power_supply_propval pval = {0,};
+	int batt_temp = 0;
+	int rc;
+
+	if (!pdpm->bms_psy)
+		return false;
+
+	rc = power_supply_get_property(pdpm->bms_psy,
+				POWER_SUPPLY_PROP_TEMP, &pval);
+	if (rc < 0) {
+		pr_info("Couldn't get batt temp prop:%d\n", rc);
+		return false;
+	}
+	batt_temp = pval.intval;
+
+	pr_debug("batt_temp: %d\n", batt_temp);
+	if (batt_temp > (WARM_HYS_THRESHOLDS + 30))
+		return true;
+	return false;
+}
+#endif
 
 /* get bq27z561 fastcharge mode to enable or disabled */
 static bool pd_get_bms_digest_verified(struct usbpd_pm *pdpm)
@@ -744,6 +850,7 @@ static int usbpd_pm_enable_sw(struct usbpd_pm *pdpm, bool enable)
 	return ret;
 }
 
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 static int usbpd_pm_check_slowly_charging_enabled(struct usbpd_pm *pdpm)
 {
 	int ret;
@@ -763,6 +870,7 @@ static int usbpd_pm_check_slowly_charging_enabled(struct usbpd_pm *pdpm)
 
 	return ret;
 }
+#endif
 
 static int usbpd_pm_limit_sw(struct usbpd_pm *pdpm, bool enable)
 {
@@ -1024,11 +1132,20 @@ static int usbpd_pm_fc2_charge_algo(struct usbpd_pm *pdpm)
 			pdpm->is_temp_out_fc2_range, thermal_level);
 
 	/*check if slowly charging feature is enabled*/
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 	usbpd_pm_check_slowly_charging_enabled(pdpm);
+#endif
 
 	if (pdpm->cp.bat_therm_fault) { /* battery overheat, stop charge*/
 		pr_info("bat_therm_fault:%d\n", pdpm->cp.bat_therm_fault);
 		return PM_ALGO_RET_THERM_FAULT;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	} else if (thermal_level >= MAX_THERMAL_LEVEL || pdpm->is_temp_out_fc2_range) {
+		pr_info("is_temp_out_fc2_range:%d,thermal_level:%d\n",
+				pdpm->is_temp_out_fc2_range, thermal_level);
+		pr_info("thermal level too high or batt temp is out of fc2 range\n");
+		return PM_ALGO_RET_CHG_DISABLED;
+#else
 	} else if (pdpm->is_temp_out_fc2_range
 			|| (thermal_level >= MAX_THERMAL_LEVEL
 			&& pdpm->cp.sc8551_charge_mode != SC8551_CHARGE_MODE_BYPASS)
@@ -1036,6 +1153,7 @@ static int usbpd_pm_fc2_charge_algo(struct usbpd_pm *pdpm)
 			&& pdpm->cp.sc8551_charge_mode == SC8551_CHARGE_MODE_BYPASS)) {
 		pr_info("thermal level too high or batt temp is out of fc2 range\n");
 		return PM_ALGO_RET_CHG_DISABLED;
+#endif
 	} else if (pdpm->cp.bat_ocp_fault || pdpm->cp.bus_ocp_fault
 			|| pdpm->cp.bat_ovp_fault || pdpm->cp.bus_ovp_fault) {
 		pr_info("bat_ocp_fault:%d, bus_ocp_fault:%d, bat_ovp_fault:%d, bus_ovp_fault:%d\n",
@@ -1046,12 +1164,27 @@ static int usbpd_pm_fc2_charge_algo(struct usbpd_pm *pdpm)
 		pr_info("cp.charge_enabled:%d, cp_sec.charge_enabled:%d\n",
 				pdpm->cp.charge_enabled, pdpm->cp_sec.charge_enabled);
 		return PM_ALGO_RET_CHG_DISABLED;
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 	} else if (pdpm->sw.slowly_charging) {
 		pr_info("slowly charging enabled[%d]\n", pdpm->sw.slowly_charging);
 		return PM_ALGO_RET_SLOWLY_CHARGING;
+#endif
 	}
 
 	/*check overcharge when it is cool*/
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	if ((pdpm->cp.vbat_volt > pm_config.bat_volt_lp_lmt && is_cool_charge(pdpm)) ||
+			(pdpm->cp.vbat_volt > BATT_WARM_CHG_VOLT && is_warm_charge(pdpm))) {
+		if (cool_warm_overcharge_timer++ > TAPER_TIMEOUT) {
+			pr_info("cool warm overcharge\n");
+			cool_warm_overcharge_timer = 0;
+			pdpm->bq_cool_warm_done = true;
+			return PM_ALGO_RET_CHG_DISABLED;
+		}
+	} else {
+		cool_warm_overcharge_timer = 0;
+	}
+#else
 	if (pdpm->cp.vbat_volt > pm_config.bat_volt_lp_lmt
 			&& is_cool_charge(pdpm)) {
 		if (cool_overcharge_timer++ > TAPER_TIMEOUT) {
@@ -1062,6 +1195,7 @@ static int usbpd_pm_fc2_charge_algo(struct usbpd_pm *pdpm)
 	} else {
 		cool_overcharge_timer = 0;
 	}
+#endif
 	/* charge pump taper charge */
 	if (pdpm->cp.vbat_volt > pm_config.bat_volt_lp_lmt - TAPER_VOL_HYS
 			&& pdpm->cp.ibat_curr < pm_config.fc2_taper_current) {
@@ -1143,7 +1277,9 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 		recover = false;
 		request_fail_count = 0;
 
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 		usbpd_pm_check_slowly_charging_enabled(pdpm);
+#endif
 		pd_get_batt_current_thermal_level(pdpm, &thermal_level);
 		pdpm->is_temp_out_fc2_range = pd_disable_cp_by_jeita_status(pdpm);
 		pr_info("is_temp_out_fc2_range:%d\n", pdpm->is_temp_out_fc2_range);
@@ -1175,8 +1311,10 @@ static int usbpd_pm_sm(struct usbpd_pm *pdpm)
 			|| (thermal_level >= BYPASS_THERMAL_EXIT_LEVEL
 			&& pdpm->cp.sc8551_charge_mode == SC8551_CHARGE_MODE_BYPASS)) {
 			pr_info("thermal too high or batt temp is out of fc2 range, waiting...\n");
+#ifndef CONFIG_MACH_XIAOMI_SURYA
 		} else if (pdpm->sw.slowly_charging) {
 			pr_info("slowly charging feature is on, waiting...\n");
+#endif
 		} else {
 			pr_info("batt_volt-%d is ok, start flash charging\n",
 					pdpm->cp.vbat_volt);

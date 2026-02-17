@@ -24,7 +24,7 @@
 		mi,pd-bat-curr-max = <6000>;
 		mi,pd-bus-volt-max = <12000>;
 		mi,pd-bus-curr-max = <3000>;
-		mi,pd-bus-curr-compensate = <100>;
+		mi,pd-bus-curr-compensate = <200>;
 	};
 };
 
@@ -204,7 +204,7 @@
 	mi,use-bq-pump;
 	qcom,distinguish-qc-class-ab;
 	qcom,disable-suspend-on-collapse;
-	mi,swithc-sel-gpio = <&tlmm 94 0>;
+	mi,switch-sel-gpio = <&tlmm 94 0>;
 	qcom,lpd-disable;
 };
 

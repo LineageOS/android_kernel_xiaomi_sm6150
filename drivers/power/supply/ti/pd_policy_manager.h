@@ -73,6 +73,14 @@ enum pm_state {
 #define NON_VERIFIED_PPS_FCC_MAX		3000
 #define MAX_THERMAL_LEVEL			13
 /* jeita related */
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define JEITA_WARM_THR			580
+#define JEITA_COOL_THR			50
+#define JEITA_BYPASS_WARM_THR		580
+#define JEITA_BYPASS_COOL_THR		50
+#define COOL_HYS_THRESHOLDS		180
+#define WARM_HYS_THRESHOLDS		450
+#else
 #ifdef CONFIG_K6_CHARGE
 #define JEITA_WARM_THR			480
 #define JEITA_COOL_THR			100
@@ -83,6 +91,7 @@ enum pm_state {
 #define JEITA_COOL_THR			100
 #define JEITA_BYPASS_WARM_THR		480
 #define JEITA_BYPASS_COOL_THR		100
+#endif
 #endif
 
 #define PDO_MAX_NUM			7
@@ -104,10 +113,14 @@ enum pm_state {
 #define TAPER_WITH_IBUS_HYS			60
 #define TAPER_IBUS_THR			450
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define BQ_TAPER_HYS_MV			10
+#else
 #ifdef CONFIG_K6_CHARGE
 #define BQ_TAPER_HYS_MV			10
 #else
 #define BQ_TAPER_HYS_MV			30
+#endif
 #endif
 
 #define BQ_TAPER_DECREASE_STEP_MA			200
@@ -243,6 +256,9 @@ struct usbpd_pm {
 	/* jeita or thermal related */
 	bool			jeita_triggered;
 	bool			is_temp_out_fc2_range;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	bool			bq_cool_warm_done;
+#endif
 };
 
 struct pdpm_config {

@@ -22,6 +22,7 @@ qcom,m703-atl-6000mah {
 	qcom,battery-type = "m703-atl-6000mah";
 	qcom,qg-batt-profile-ver = <100>;
 	mi,six-pin-battery;
+	mi-ffc-current-cfg = <350 820000 820000 (-530) (-530)>;
 
 	qcom,jeita-fcc-ranges = <(-100)  0   580000
 	                        1  50   1050000

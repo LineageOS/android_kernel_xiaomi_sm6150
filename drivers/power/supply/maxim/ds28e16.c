@@ -64,7 +64,7 @@ unsigned char session_seed[32] = {
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
 unsigned char S_secret[32] = {
-#ifdef CONFIG_K6_CHARGE
+#if defined(CONFIG_K6_CHARGE) || defined(CONFIG_MACH_XIAOMI_SURYA)
 0x0C, 0x99, 0x2B, 0xD3, 0x95, 0xDB, 0xA0, 0xB4,
 0xEF, 0x07, 0xB3, 0xD8, 0x75, 0xF3, 0xC7, 0xAE,
 0xDA, 0xC4, 0x41, 0x2F, 0x48, 0x93, 0xB5, 0xD9,
@@ -162,11 +162,18 @@ short Read_RomID(unsigned char *RomID)
 
 	if (crc == RomID[7]) {
 		memcpy(mi_romid, RomID, 8);
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		if (flag_mi_status == 0)
+			flag_mi_romid = 1;
+		else
+			flag_mi_romid = 2;
+#else
 		if ((mi_romid[0] == FAMILY_CODE) && (mi_romid[6] == CUSTOM_ID_MSB) && ((mi_romid[5] & 0xf0) == CUSTOM_ID_LSB))
 			flag_mi_romid = 2;
 #ifdef CONFIG_K6_CHARGE
 		else
 			flag_mi_romid = 1;
+#endif
 #endif
 		return DS_TRUE;
 	} else {
@@ -342,6 +349,38 @@ int DS28E16_cmd_readStatus(unsigned char *data)
 	return DS_FALSE;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+void DS28E16_cmd_romid_pre(void)
+{
+	unsigned char write_buf[255];
+	int write_len = 0;
+	int len_byte = 1;
+	int i;
+
+	ow_reset();
+	write_byte(CMD_SKIP_ROM);
+
+	write_buf[write_len++] = CMD_START;
+	write_buf[write_len++] = len_byte;
+	write_buf[write_len++] = CMD_READ_STATUS;
+	for (i = 0; i < write_len; i++)
+		write_byte(write_buf[i]);
+
+	for (i = 0; i < 2; i++)
+		read_byte();
+
+	write_byte(CMD_RELEASE_BYTE);
+		Delay_us(1000*DELAY_DS28E16_EE_READ*tm);
+
+	//discard 11 bytes to get romid
+	for (i = 0; i < 11; i++)
+		read_byte();
+	ow_reset();
+
+	ds_log("DS28E16_cmd_romid_pre done\n");
+}
+#endif
+
 //--------------------------------------------------------------------------
 /// 'Read Memory' command
 ///
@@ -511,7 +550,7 @@ int DS28E16_cmd_writeMemory(int pg, unsigned char *data)
 				}
 				if (pagenum == 0x01) {
 					flag_mi_page1_data = 0;
-#ifdef CONFIG_K6_CHARGE
+#if defined(CONFIG_K6_CHARGE) || defined(CONFIG_MACH_XIAOMI_SURYA)
 					memset(mi_page1_data, 0x00, 16);
 #else
 					memset(mi_page0_data, 0x00, 16);
@@ -821,6 +860,19 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 		return mi_auth_result;
 #endif
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	if (ds28el16_Read_RomID_retry(mi_romid) != DS_TRUE) {
+		ow_reset();
+		return ERROR_R_ROMID;
+	}
+
+	if (ds28el16_get_page_status_retry(status_chip) == DS_TRUE) {
+		MANID[0] = status_chip[4];
+	} else {
+		ow_reset();
+		return ERROR_R_STATUS;
+	}
+#else
 	if (anon != ANONYMOUS) {
 		if (ds28el16_get_page_status_retry(status_chip) == DS_TRUE) {
 			MANID[0] = status_chip[4];
@@ -842,6 +894,7 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 		ow_reset();
 		return ERROR_R_ROMID;
 	}
+#endif
 #endif
 
 	// DS28E16 calculate its session secret
@@ -1008,6 +1061,30 @@ unsigned char *Challenge, unsigned char *Secret_Seeds, unsigned char *S_Secret)
 
 
 // retry interface start //
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+static int ds28el16_Read_RomID_retry(unsigned char *RomID)
+{
+	int i;
+	static bool read_romid_ok = false;
+
+	ds_info("read rom id communication start ...\n");
+	if (read_romid_ok) {
+			ds_log("ds28el16_Read_RomID_retry success ...\n");
+			return DS_TRUE;
+	} else {
+		for (i = 0; i < GET_ROM_ID_RETRY; i++) {
+			DS28E16_cmd_romid_pre();
+			if (Read_RomID(RomID) == DS_TRUE) {
+				ds_log("ds28el16_Read_RomID_retry success %d\n", i);
+				read_romid_ok = true;
+				return DS_TRUE;
+			}
+		}
+	}
+	ds_log("ds28el16_Read_RomID_retry fail\n");
+	return DS_FALSE;
+}
+#else
 static int ds28el16_Read_RomID_retry(unsigned char *RomID)
 {
 	int i;
@@ -1023,6 +1100,7 @@ static int ds28el16_Read_RomID_retry(unsigned char *RomID)
 	}
 	return DS_FALSE;
 }
+#endif
 
 static int ds28el16_get_page_status_retry(unsigned char *data)
 {
