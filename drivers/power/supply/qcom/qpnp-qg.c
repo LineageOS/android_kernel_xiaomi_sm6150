@@ -1722,6 +1722,17 @@ static int qg_get_battery_capacity(struct qpnp_qg *chip, int *soc)
 	else
 		*soc = chip->msoc;
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	if (chip->charge_status == POWER_SUPPLY_STATUS_CHARGING) {
+		rc = qg_get_battery_current(chip, &ibat);
+		if ((rc >= 0) && (ibat < 0) && (*soc < pre_soc)) {
+			*soc = pre_soc;
+			pr_err("soc capping: rc=%d, ibat=%d, pre_soc=%d, *soc=%d\n",
+					rc, ibat, pre_soc, *soc);
+		}
+	}
+#endif
+
 	if (chip->dt.software_optimize_ffc_qg_iterm) {
 		if ((chip->fastcharge_mode_enabled) && (pre_soc == 99)
 			&& (*soc == 100) && (chip->charge_status == POWER_SUPPLY_STATUS_CHARGING)) {
@@ -2645,12 +2656,19 @@ static bool qg_cl_ok_to_begin(void *data)
 	return false;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define DEFAULT_RECHARGE_SOC 99
+#else
 #define DEFAULT_RECHARGE_SOC 95
+#endif
 #define BATT_QG_WARM_THRESHOLD 450
 static int qg_charge_full_update(struct qpnp_qg *chip)
 {
 	union power_supply_propval prop = {0, };
-	int rc, recharge_soc, health, batt_temp;
+	int rc, recharge_soc, health;
+#ifndef CONFIG_MACH_XIAOMI_SURYA
+	int batt_temp;
+#endif
 
 	if (!chip->dt.hold_soc_while_full)
 		goto out;
@@ -2677,6 +2695,40 @@ static int qg_charge_full_update(struct qpnp_qg *chip)
 				chip->msoc, health, chip->charge_full,
 				chip->charge_done, chip->charge_status);
 	if (chip->charge_done && !chip->charge_full) {
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+		if (health == POWER_SUPPLY_HEALTH_GOOD
+				|| health == POWER_SUPPLY_HEALTH_COOL) {
+			if (chip->recharge_soc != DEFAULT_RECHARGE_SOC) {
+				prop.intval = DEFAULT_RECHARGE_SOC;
+				rc = power_supply_set_property(chip->batt_psy,
+						POWER_SUPPLY_PROP_RECHARGE_SOC, &prop);
+				qg_dbg(chip, QG_DEBUG_STATUS,
+						"HEALTH_GOOD set recharge_soc=%d\n",
+						prop.intval);
+			}
+			if (chip->msoc >= 99) {
+				chip->charge_full = true;
+				qg_dbg(chip, QG_DEBUG_STATUS,
+						"Setting charge_full (0->1) @ msoc=%d\n",
+						chip->msoc);
+			}
+		} else if (health == POWER_SUPPLY_HEALTH_WARM) {
+			/* terminated in JEITA */
+			if (((chip->recharge_soc == DEFAULT_RECHARGE_SOC)
+						|| (chip->msoc > chip->recharge_soc + 2))
+					&& (chip->msoc != 100)) {
+				prop.intval = chip->msoc - 2;
+				rc = power_supply_set_property(chip->batt_psy,
+						POWER_SUPPLY_PROP_RECHARGE_SOC, &prop);
+				qg_dbg(chip, QG_DEBUG_STATUS,
+						"HEALTH_WARM set recharge_soc=%d\n",
+						prop.intval);
+			}
+			qg_dbg(chip, QG_DEBUG_STATUS,
+					"Terminated charging @ msoc=%d\n",
+					chip->msoc);
+		}
+#else
 		if (chip->msoc >= 99 && health == POWER_SUPPLY_HEALTH_GOOD) {
 			chip->charge_full = true;
 			qg_dbg(chip, QG_DEBUG_STATUS, "Setting charge_full (0->1) @ msoc=%d\n",
@@ -2708,6 +2760,7 @@ static int qg_charge_full_update(struct qpnp_qg *chip)
 					qg_dbg(chip, QG_DEBUG_STATUS, "Forced recharge before\n");
 			}
 		}
+#endif
 	} else if ((!chip->charge_done || chip->msoc <= recharge_soc)
 				&& chip->charge_full) {
 
@@ -3544,6 +3597,25 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 			if (rc < 0) {
 				pr_err("qg_load_battery_profile : get page0 error.\n");
 			} else {
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+				if ((pval.arrayval[0] == 'A') || (pval.arrayval[0] == 'N')) {
+					if ((pval.arrayval[3] == '5') && (pval.arrayval[4] == '7')) {
+						profile_node = of_batterydata_get_best_profile(chip->batt_node,
+							chip->batt_id_ohm / 1000, "m703-pm7150b-atl-5160mah");
+					} else if ((pval.arrayval[3] == '6') && (pval.arrayval[4] == '1')) {
+						profile_node = of_batterydata_get_best_profile(chip->batt_node,
+							chip->batt_id_ohm / 1000, "m703-atl-6000mah");
+					} else {
+						profile_node = of_batterydata_get_best_profile(chip->batt_node,
+							chip->batt_id_ohm / 1000, "m703-pm7150b-atl-5160mah");
+					}
+					chip->profile_judge_done = true;
+				} else {
+					profile_node = of_batterydata_get_best_profile(chip->batt_node,
+						chip->batt_id_ohm / 1000, "m703-pm7150b-atl-5160mah");
+					chip->profile_judge_done = true;
+				}
+#else
 				if ((pval.arrayval[0] == 'S') || (pval.arrayval[0] == 'X')) {
 					profile_node = of_batterydata_get_best_profile(chip->batt_node,
 						chip->batt_id_ohm / 1000, "G7BSWDBM4P_4500mAh");
@@ -3553,6 +3625,7 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 						chip->batt_id_ohm / 1000, "G7BNVTBM4P_4500mAh");
 					chip->profile_judge_done = true;
 				}
+#endif
 			}
 		}
 #endif
@@ -3562,8 +3635,13 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 				profile_node = of_batterydata_get_best_profile(chip->batt_node,
 					chip->batt_id_ohm / 1000, "K6_sunwoda_5020mah");
 #else
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+				profile_node = of_batterydata_get_best_profile(chip->batt_node,
+					chip->batt_id_ohm / 1000, "m703-pm7150b-atl-5160mah");
+#else
 				profile_node = of_batterydata_get_best_profile(chip->batt_node,
 					chip->batt_id_ohm / 1000, "G7BSWDBM4P_4500mAh");
+#endif
 #endif
 			} else {
 				return 0;

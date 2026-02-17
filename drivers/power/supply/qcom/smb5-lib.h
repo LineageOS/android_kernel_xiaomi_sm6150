@@ -121,7 +121,11 @@ enum print_reason {
 #define WEAK_CHG_STORM_COUNT	8
 
 /* defined for distinguish qc class_a and class_b */
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define VOL_THR_FOR_QC_CLASS_AB		12300000
+#else
 #define VOL_THR_FOR_QC_CLASS_AB		12400000
+#endif
 #define COMP_FOR_LOW_RESISTANCE_CABLE	100000
 #define QC_CLASS_A_CURRENT_UA		3600000
 #define HVDCP_CLASS_A_MAX_UA		2500000
@@ -165,6 +169,10 @@ enum print_reason {
 #define TYPE_RECHECK_TIME_5S	5000
 #define TYPE_RECHECK_COUNT	3
 
+#if defined(CONFIG_BATT_VERIFY_BY_DS28E16) && defined(CONFIG_MACH_XIAOMI_SURYA)
+#define CHARGER_SOC_DECIMAL_MS		200
+#endif
+
 /* defined for un_compliant Type-C cable */
 #define CC_UN_COMPLIANT_START_DELAY_MS	700
 
@@ -177,16 +185,28 @@ enum print_reason {
 #define SDP_100_MA			100000
 #define SDP_CURRENT_UA			500000
 #define CDP_CURRENT_UA			1500000
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define DCP_CURRENT_UA			1800000
+#else
 #define DCP_CURRENT_UA			2000000
+#endif
 #define HVDCP_CURRENT_UA		3000000
 #define HVDCP_CLASS_B_CURRENT_UA		3100000
 #define HVDCP2_CURRENT_UA		1500000
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define HVDCP_START_CURRENT_UA		1000000
+#else
 #define HVDCP_START_CURRENT_UA		500000
+#endif
 #define HVDCP_START_CURRENT_UA_FOR_BQ	500000
 #define TYPEC_DEFAULT_CURRENT_UA	900000
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
 #define TYPEC_HIGH_CURRENT_UA		3000000
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define HVDCP3p5_40W_CURRENT_UA		4500000
+#else
 #define HVDCP3p5_40W_CURRENT_UA		4000000
+#endif
 #define DCIN_ICL_MIN_UA			100000
 #define DCIN_ICL_MAX_UA			1500000
 #define DCIN_ICL_STEP_UA		100000
@@ -197,19 +217,31 @@ enum print_reason {
 #define ROLE_REVERSAL_DELAY_MS		2000
 
 /* six pin new battery step charge micros */
-#ifdef CONFIG_K6_CHARGE
+#if defined(CONFIG_K6_CHARGE) || defined(CONFIG_MACH_XIAOMI_SURYA)
 #define MAX_STEP_ENTRIES			3
-#define MAX_COUNT_OF_IBAT_STEP			2
 #else
 #define MAX_STEP_ENTRIES			2
+#endif
 #define MAX_COUNT_OF_IBAT_STEP			2
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define TAPER_DECREASE_FCC_UA			100000
+#define TAPER_IBAT_TRH_HYS_UA			50000
+#define MIN_TAPER_FCC_THR_UA			2000000
+#define TAPER_BATT_CAPACITY_THR			35
 #endif
 
 
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+#define STEP_CHG_DELAYED_MONITOR_MS			10000
+#define STEP_CHG_DELAYED_QUICK_MONITOR_MS			2000
+#define STEP_CHG_DELAYED_START_MS			10000
+#define VBAT_FOR_STEP_MIN_UV			4350000
+#else
 #define STEP_CHG_DELAYED_MONITOR_MS			15000
 #define STEP_CHG_DELAYED_QUICK_MONITOR_MS			5000
 #define STEP_CHG_DELAYED_START_MS			100
 #define VBAT_FOR_STEP_MIN_UV			4300000
+#endif
 #define VBAT_FOR_STEP_HYS_UV			20000
 
 #define MAIN_ICL_MIN			100000
@@ -639,6 +671,10 @@ struct smb_charger {
 	struct delayed_work	status_report_work;
 	struct delayed_work	thermal_setting_work;
 
+#if defined(CONFIG_BATT_VERIFY_BY_DS28E16) && defined(CONFIG_MACH_XIAOMI_SURYA)
+	struct delayed_work	charger_soc_decimal;
+#endif
+
 	struct alarm		lpd_recheck_timer;
 	struct alarm		moisture_protection_alarm;
 	struct alarm		chg_termination_alarm;
@@ -714,6 +750,15 @@ struct smb_charger {
 	bool			otg_present;
 	bool			hvdcp_disable;
 	bool			fake_hvdcp3;
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	bool			reverse_charge_mode;
+	bool			reverse_charge_state;
+	unsigned int		switch_sel_gpio;
+	struct notifier_block	otg_step_nb;
+	struct work_struct	otg_chg_notify_work;
+	struct wakeup_source	step_otg_chg_ws;
+	int			otg_chg_current;
+#endif
 	int			hw_max_icl_ua;
 	int			auto_recharge_soc;
 	enum sink_src_mode	sink_src_mode;
@@ -852,7 +897,12 @@ struct smb_charger {
 	/* used for 6pin new battery step charge */
 	bool			six_pin_step_charge_enable;
 	bool			init_start_vbat_checked;
+	int			six_pin_step_cfg_count;
 	struct six_pin_step_data			six_pin_step_cfg[MAX_STEP_ENTRIES];
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+	int			six_pin_step_cfg_2_count;
+	struct six_pin_step_data			six_pin_step_cfg_2[MAX_STEP_ENTRIES];
+#endif
 	u32			start_step_vbat;
 	int			trigger_taper_count;
 	int			index_vfloat;
@@ -1134,4 +1184,9 @@ struct usbpd *smb_get_usbpd(void);
 
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);
+#ifdef CONFIG_MACH_XIAOMI_SURYA
+void rerun_reverse_check(struct smb_charger *chg);
+int smblib_get_prop_batt_awake(struct smb_charger *chg,
+				union power_supply_propval *val);
+#endif
 #endif /* __SMB5_CHARGER_H */
