@@ -16,6 +16,23 @@
       "message": "Not sure if we want this",
       "revId": "1d5abe3018e06e9712f47c1c8eb404725755d83b",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c961e4e0_52b7dc7e",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2026-02-22T20:10:31Z",
+      "side": 1,
+      "message": "actually looks okay - https://github.com/LineageOS/android_kernel_xiaomi_sm6150/commit/13ef7caa41e97f24fdd706c17a3427c46471409c",
+      "revId": "1d5abe3018e06e9712f47c1c8eb404725755d83b",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
