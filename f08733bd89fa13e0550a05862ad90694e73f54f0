@@ -1,0 +1,38 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8710cc85_c238f828",
+        "filename": "techpack/audio/asoc/sm6150.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 7820,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2026-02-22T19:56:21Z",
+      "side": 1,
+      "message": "```suggestion\n#ifdef CONFIG_SND_SOC_TAS256X\n```",
+      "revId": "f08733bd89fa13e0550a05862ad90694e73f54f0",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "e571169c_8b6b06e4",
+        "filename": "techpack/audio/asoc/sm6150.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 7840,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2026-02-22T19:56:21Z",
+      "side": 1,
+      "message": "```suggestion\n#ifdef CONFIG_SND_SOC_TAS256X\n```",
+      "revId": "f08733bd89fa13e0550a05862ad90694e73f54f0",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
