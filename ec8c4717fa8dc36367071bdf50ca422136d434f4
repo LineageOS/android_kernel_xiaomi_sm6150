@@ -1,0 +1,55 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f4e31fbe_5c71b11b",
+        "filename": "drivers/media/platform/msm/camera/cam_sensor_module/cam_eeprom/cam_eeprom_core.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 27,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2026-02-22T20:40:37Z",
+      "side": 1,
+      "message": "Don\u0027t you enable CONFIG_LDO_WL2866D",
+      "revId": "ec8c4717fa8dc36367071bdf50ca422136d434f4",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "e90a519a_680bc619",
+        "filename": "drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_cmn_header.h",
+        "patchSetId": 1
+      },
+      "lineNbr": 156,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2026-02-22T20:40:37Z",
+      "side": 1,
+      "message": "Don\u0027t you enable CONFIG_LDO_WL2866D",
+      "revId": "ec8c4717fa8dc36367071bdf50ca422136d434f4",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "cf57818e_e8e96dd9",
+        "filename": "drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_cmn_header.h",
+        "patchSetId": 1
+      },
+      "lineNbr": 378,
+      "author": {
+        "id": 28223
+      },
+      "writtenOn": "2026-02-22T20:40:37Z",
+      "side": 1,
+      "message": "ditto",
+      "revId": "ec8c4717fa8dc36367071bdf50ca422136d434f4",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
