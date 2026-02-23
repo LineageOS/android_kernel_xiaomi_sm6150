@@ -18,6 +18,24 @@
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "c1b38b8e_eb106d74",
+        "filename": "techpack/audio/asoc/sm6150.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 7820,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-02-23T16:38:13Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "8710cc85_c238f828",
+      "revId": "f08733bd89fa13e0550a05862ad90694e73f54f0",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "e571169c_8b6b06e4",
@@ -31,6 +49,24 @@
       "writtenOn": "2026-02-22T19:56:21Z",
       "side": 1,
       "message": "```suggestion\n#ifdef CONFIG_SND_SOC_TAS256X\n```",
+      "revId": "f08733bd89fa13e0550a05862ad90694e73f54f0",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "3bcc8893_2a88196b",
+        "filename": "techpack/audio/asoc/sm6150.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 7840,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-02-23T16:38:13Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "e571169c_8b6b06e4",
       "revId": "f08733bd89fa13e0550a05862ad90694e73f54f0",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
