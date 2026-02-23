@@ -16,6 +16,24 @@
       "message": "Why?",
       "revId": "b76caa25fba65f501f8408f0f691773cfb7741fd",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "aca94b21_42dd9b95",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-02-23T07:24:28Z",
+      "side": 1,
+      "message": "that allows us to use that frequency, we can use that lowest possible frequency after that",
+      "parentUuid": "575a7b64_4127cf9a",
+      "revId": "b76caa25fba65f501f8408f0f691773cfb7741fd",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
