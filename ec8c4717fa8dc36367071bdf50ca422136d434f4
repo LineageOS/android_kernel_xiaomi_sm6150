@@ -18,6 +18,24 @@
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "cbbcd548_ceb5dcd4",
+        "filename": "drivers/media/platform/msm/camera/cam_sensor_module/cam_eeprom/cam_eeprom_core.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 27,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-02-23T14:16:14Z",
+      "side": 1,
+      "message": "fixed",
+      "parentUuid": "f4e31fbe_5c71b11b",
+      "revId": "ec8c4717fa8dc36367071bdf50ca422136d434f4",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "e90a519a_680bc619",
@@ -35,6 +53,24 @@
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "3dd16e53_151135b0",
+        "filename": "drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_cmn_header.h",
+        "patchSetId": 1
+      },
+      "lineNbr": 156,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-02-23T14:16:14Z",
+      "side": 1,
+      "message": "fixed",
+      "parentUuid": "e90a519a_680bc619",
+      "revId": "ec8c4717fa8dc36367071bdf50ca422136d434f4",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "cf57818e_e8e96dd9",
@@ -48,6 +84,24 @@
       "writtenOn": "2026-02-22T20:40:37Z",
       "side": 1,
       "message": "ditto",
+      "revId": "ec8c4717fa8dc36367071bdf50ca422136d434f4",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e15c77dd_b7bc30fc",
+        "filename": "drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_cmn_header.h",
+        "patchSetId": 1
+      },
+      "lineNbr": 378,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-02-23T14:16:14Z",
+      "side": 1,
+      "message": "fixed",
+      "parentUuid": "cf57818e_e8e96dd9",
       "revId": "ec8c4717fa8dc36367071bdf50ca422136d434f4",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
