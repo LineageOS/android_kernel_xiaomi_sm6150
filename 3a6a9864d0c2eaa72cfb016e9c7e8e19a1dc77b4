@@ -16,6 +16,24 @@
       "message": "let\u0027s rather do this?\nhttps://github.com/LineageOS/android_device_xiaomi_violet/commit/b3a6956ee2c3996939bf271f98296e1f83768f6f",
       "revId": "3a6a9864d0c2eaa72cfb016e9c7e8e19a1dc77b4",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9bbbc69b_9215973d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-02-27T17:55:03Z",
+      "side": 1,
+      "message": "surya is side fp device, doing this will always wake the device on slight touch on sensor or while locking the device by using power button",
+      "parentUuid": "e9f25605_3714d9e8",
+      "revId": "3a6a9864d0c2eaa72cfb016e9c7e8e19a1dc77b4",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
