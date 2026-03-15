@@ -16,6 +16,24 @@
       "message": "do we even need any of the changes in this file?",
       "revId": "9c26523367d4dc4a32885bd0c84e324550097da9",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "7a9f6aa3_8ae4ab61",
+        "filename": "drivers/input/touchscreen/nt36xxx_spi/nt36xxx.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 84,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-03-15T10:43:04Z",
+      "side": 1,
+      "message": "Yeah its needed. Otherwise you will get symbol error of set_lcd_reset_gpio_keep_high",
+      "parentUuid": "ee7123ed_ad7134c4",
+      "revId": "9c26523367d4dc4a32885bd0c84e324550097da9",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
