@@ -34,6 +34,24 @@
       "parentUuid": "ee7123ed_ad7134c4",
       "revId": "9c26523367d4dc4a32885bd0c84e324550097da9",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "a8982295_f9cd62bf",
+        "filename": "drivers/input/touchscreen/nt36xxx_spi/nt36xxx.c",
+        "patchSetId": 1
+      },
+      "lineNbr": 84,
+      "author": {
+        "id": 29230
+      },
+      "writtenOn": "2026-03-16T11:53:10Z",
+      "side": 1,
+      "message": "Marked as resolved.",
+      "parentUuid": "7a9f6aa3_8ae4ab61",
+      "revId": "9c26523367d4dc4a32885bd0c84e324550097da9",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
