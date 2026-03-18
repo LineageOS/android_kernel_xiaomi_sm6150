@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "22646c7b_4d744e50",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 6
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 21290
+      },
+      "writtenOn": "2026-03-18T09:58:30Z",
+      "side": 1,
+      "message": "breaks davinci and probably other sdmmagpie devices",
+      "revId": "cc9cc4f2774ab1f9f7bc1666dbf3bfce6842605c",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
